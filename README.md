@@ -1,9 +1,6 @@
-# PSY3008-SGT-ADHD
 # PSY3008 - Syndrome de Gilles de la Tourette et TDAH
 
-
-
-# Analyses statistiques portant sur la question de recherche suivante : les individus atteints du syndrome de Gilles de la Tourette avec une symptomatologie comorbide répondent-ils différemment au traitement par TCC que les individus sans symptomatologie TDAH comorbide ?
+Analyses statistiques portant sur la question de recherche suivante : les individus atteints du syndrome de Gilles de la Tourette avec une symptomatologie comorbide répondent-ils différemment au traitement par TCC que les individus sans symptomatologie TDAH comorbide ?
 
 ## YGTSS_CAARS.Rmd :
 - Fusion des banques de données des différentes variables (données sociodémographiques, BAI, BDI, CAARS, YGTSS)

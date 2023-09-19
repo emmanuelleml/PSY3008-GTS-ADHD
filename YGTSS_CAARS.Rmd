@@ -1,0 +1,755 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library('dplyr')
+library('lme4')
+library('sjmisc')
+library("ggplot2")
+library('afex')
+library('jmv')
+library('emmeans')
+library('effectsize')
+library('rstatix')
+library('haven')
+library('readxl')
+library("writexl")
+```
+
+
+!!!
+Vérifier que groupes sont égaux sur les autres variables (âge, QI, scolarité...). Et le rapporter dans l'article
+
+Regarder médication, voir si gr sont égaux sur la médication. 
+pour Pre, peux faire moyenne si pas trop de variance entre les scores Pre du participant.
+
+pour le YGTSS, les items manquants sont probablement 0, vérifier si ça concorde avec le score final si on met 0 à la place du NA à l'item. --> OK c'est fait
+
+```{r}
+setwd("C:/Users/Admin/Desktop/CRIUSMM/Tourette")
+```
+
+
+# YGTSS
+```{r}
+ygtss <- readxl::read_excel("Excel/YGTSS_Emmanuelle.xlsx")
+YGTSS = data.frame(id = ygtss$PatientCode, tps_de_mesure = ygtss$tblCondition.Nom, 
+                   nbr_moteur = ygtss$nbr_moteur, nbr_phonique = ygtss$nbr_phonique, 
+                   frq_moteur = ygtss$frq_moteur, frq_phonique = ygtss$frq_phonique, 
+                   int_moteur = ygtss$int_moteur, int_phonique = ygtss$int_phonique, 
+                   comp_moteur = ygtss$comp_moteur, comp_phonique = ygtss$comp_phonique, 
+                   inter_moteur = ygtss$inter_moteur, inter_phonique = ygtss$inter_phonique, 
+                   deter_moteur = ygtss$deter_moteur, deter_phonique = ygtss$deter_phonique, YGTSS = ygtss$total)
+YGTSS
+```
+
+## Vérifier comment les différents temps de mesures sont notés pour voir lesquels je peux regrouper (lesquels correspondent à la même chose)
+```{r}
+sjmisc::frq(YGTSS$tps_de_mesure)
+# une seule personne a Post T1 donc clairement veut dire post 6 mois
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "Post T1"] <- "Post_6_mois"
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "Pre 2"] <- "Pre_T2"
+
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "post 1 an"] <- "Post_1_an"
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "post 6 mois"] <- "Post_6_mois"
+
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "Pré"] <- "Pre"
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "Pré_T1"] <- "Pre_T1"
+YGTSS['tps_de_mesure'][YGTSS['tps_de_mesure'] == "Pré_T2"] <- "Pre_T2"
+
+sjmisc::frq(YGTSS$tps_de_mesure)
+
+YGTSS_wide <- reshape(YGTSS, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+YGTSS_wide
+```
+
+# CAARS
+Modifications direct dans le fichier :
+ô --> o
+é --> e
+1222 B --> 1222
+1753/1922 --> 1922
+, --> . (sinon lu comme alpha)
+
+controle PRe 2, controle PRE, controle, PrE T2 --> Pre
+Post T1 --> Post
+```{r}
+# J'ai dû modifier le fichier pour remplacer les ô et les é par o et e, pcq r les lisait pas correctement
+caars <- read.csv("Excel/MarcCAARSwide.csv", sep = ";")
+CAARS = data.frame(id = caars$PatientCode, tps_de_mesure = as.character(caars$tblCondition.Nom), A = caars$CAARSA, B = caars$CAARSB, C = caars$CAARSC, D = caars$CAARSD, E = caars$CAARSE, score = caars$Total)
+CAARS
+sjmisc::frq(CAARS$tps_de_mesure)
+
+
+CAARS <- CAARS[!(CAARS$tps_de_mesure== "TOC controle"),]
+
+CAARS_wide <- reshape(CAARS, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+CAARS_wide
+
+# Personne a Pre ET PrE. Même chose pour PrE T1, controle, etc. Donc --> Pre.
+subset(CAARS_wide, !is.na(CAARS_wide$score.Pre) & !is.na(CAARS_wide$`score.controle PRe 2`))
+subset(CAARS_wide, !is.na(CAARS_wide$score.Pre) & !is.na(CAARS_wide$`score.Pre T1`))
+subset(CAARS_wide, !is.na(CAARS_wide$score.Pre) & !is.na(CAARS_wide$score.controle))
+subset(CAARS_wide, !is.na(CAARS_wide$score.Pre) & !is.na(CAARS_wide$`score.controle PRe`))
+CAARS['tps_de_mesure'][CAARS['tps_de_mesure'] == "controle" | CAARS['tps_de_mesure'] == "controle PRe" | CAARS['tps_de_mesure'] == "controle PRe 2"| CAARS['tps_de_mesure'] == "Pre T1"] <- "Pre"
+
+# Seulement 1642 a Post ET Post T1, mais c'est le même score, donc ok de faire Post T1 --> Post
+subset(CAARS_wide, !is.na(CAARS_wide$score.Post) & !is.na(CAARS_wide$`score.Post T1`))
+CAARS['tps_de_mesure'][CAARS['tps_de_mesure'] == "Post T1"] <- "Post"
+
+sjmisc::frq(CAARS$tps_de_mesure)
+
+
+
+CAARS_wide
+CAARS
+# Nouveau fichier avec les bons tps de mesure
+write_xlsx(CAARS,"Excel/MarcCAARSwide_Emmanuelle.xlsx")
+
+
+# DF CAARS officiel
+caars_2 <- read_excel("Excel/MarcCAARSwide_Emmanuelle.xlsx")
+caars_2
+CAARS_2 <- data.frame(id = caars_2$id, tps_de_mesure = caars_2$tps_de_mesure, CAARSA = as.numeric(caars_2$A), CAARSB = as.numeric(caars_2$B), CAARSC = as.numeric(caars_2$C), CAARSD = as.numeric(caars_2$D), CAARSE = as.numeric(caars_2$E), CAARS = as.numeric(caars_2$score))
+CAARS_2
+CAARS_wide_2 <- reshape(CAARS_2, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+```
+
+
+# Données BAI et BDI
+## BAI
+J'ai retiré directement dans le fichier tous les id qui sont pas entre 1222 et 8010
+1945 a 2 Pre mais donnent le même score final donc j'ai supprimé une des lignes 1945 Pre
+```{r}
+bai <- read.csv("Excel/Marc_BAIwide.csv", sep = ";")
+BAI <-  data.frame(id = bai$PatientCode, tps_de_mesure = bai$Condition, BAI = as.numeric(bai$IABTot))
+
+#BAI
+
+sjmisc::frq(BAI$tps_de_mesure)
+
+
+BAI <- BAI[!(BAI$tps_de_mesure == "Exclusion" | BAI$tps_de_mesure=="abandon" | BAI$tps_de_mesure== "desistement" | BAI$tps_de_mesure== "TOC_controle" | BAI$tps_de_mesure == "Post_T1" | BAI$tps_de_mesure == "Post_T2" | BAI$tps_de_mesure == "Post" | BAI$tps_de_mesure == "Post-RV" | BAI$tps_de_mesure == "post_6_mois" | BAI$tps_de_mesure == "post_1_an" | BAI$tps_de_mesure =="Bloc_0" | BAI$tps_de_mesure=="MI" | BAI$tps_de_mesure== "Mid"| BAI$tps_de_mesure== "post"),]
+
+sjmisc::frq(BAI$tps_de_mesure)
+
+BAI_wide <- reshape(BAI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BAI_wide
+
+
+
+# 1689 et 1855 ont juste le tps d emesure controle, donc --> Pre
+subset(BAI, tps_de_mesure == "controle")
+BAI['tps_de_mesure'][BAI['tps_de_mesure'] == "controle"] <- "Pre"
+
+# ont tous aussi un Pre. donc --> Pre_T2
+subset(BAI, tps_de_mesure == "PRe_2")
+BAI['tps_de_mesure'][BAI['tps_de_mesure'] == "PRe_2"] <- "Pre_T2"
+sjmisc::frq(BAI$tps_de_mesure)
+
+
+# Tous les controle_PRe ont juste ce score là, sauf 1222. Les autres --> Pre. 1222 --> Pre T1 T2
+subset(BAI_wide, !is.na(BAI_wide$BAI.controle_PRe) & (!is.na(BAI_wide$BAI.Pre_T1) | !is.na(BAI_wide$BAI.Pre) | !is.na(BAI_wide$BAI.Pre_T2 | !is.na(BAI_wide$BAI.controle_PRe_2))))
+BAI$tps_de_mesure <- ifelse(BAI$id == "1222" & BAI$tps_de_mesure == "controle_PRe", "Pre_T1", BAI$tps_de_mesure)
+BAI$tps_de_mesure <- ifelse(BAI$id == "1222" & BAI$tps_de_mesure == "controle_PRe_2", "Pre_T2", BAI$tps_de_mesure)
+BAI['tps_de_mesure'][BAI['tps_de_mesure'] == "controle_PRe"] <- "Pre"
+
+# controle_PRe_2 --> Pre
+subset(BAI_wide, !is.na(BAI_wide$BAI.controle_PRe_2) & (!is.na(BAI_wide$BAI.Pre_T1) | !is.na(BAI_wide$BAI.Pre) | !is.na(BAI_wide$BAI.Pre_T2)))
+BAI['tps_de_mesure'][BAI['tps_de_mesure'] == "controle_PRe_2"] <- "Pre"
+
+
+BAI_wide_2 = reshape(BAI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BAI_wide_2
+```
+
+
+```{r}
+# Aucun a les 3 scores Pre.
+subset(BAI_wide_2, !is.na(BAI_wide_2$BAI.Pre_T2) & !is.na(BAI_wide_2$BAI.Pre) & !is.na(BAI_wide_2$BAI.Pre_T1))
+# 2 id ont juste un Pre T2
+subset(BAI_wide_2, !is.na(BAI_wide_2$BAI.Pre_T2) & is.na(BAI_wide_2$BAI.Pre) & is.na(BAI_wide_2$BAI.Pre_T1))
+BAI$tps_de_mesure <- ifelse((BAI$id == "2500" | BAI$id == "3185"), "Pre", BAI$tps_de_mesure)
+
+BAI_wide_3 = reshape(BAI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BAI_wide_3
+
+# Ceux qui ont Pre et T1
+subset(BAI_wide_3, !is.na(BAI_wide_3$BAI.Pre_T1) & !is.na(BAI_wide_3$BAI.Pre) & is.na(BAI_wide_3$BAI.Pre_T2))
+BAI_wide_3[BAI_wide_3$id=="1945",] <- c("1945", 15, 11, NA)
+BAI_wide_3[BAI_wide_3$id=="1945",]
+BAI_wide_3[BAI_wide_3$id=="2300",] <- c("2300", 14, 17, NA)
+BAI_wide_3[BAI_wide_3$id=="2300",]
+
+# Ceux qui ont Pre et T2
+subset(BAI_wide_3, is.na(BAI_wide_3$BAI.Pre_T1) & !is.na(BAI_wide_3$BAI.Pre) & !is.na(BAI_wide_3$BAI.Pre_T2))
+BAI_wide_3[BAI_wide_3$id=="1532",] <- c("1532", 13, 6, NA)
+BAI_wide_3[BAI_wide_3$id=="2137",] <- c("2137", 3, 7, NA)
+BAI_wide_3[BAI_wide_3$id=="2145",] <- c("2145", 12, 19, NA)
+BAI_wide_3[BAI_wide_3$id=="2146",] <- c("2146", 6, 11, NA)
+# 256 id ont juste un T1
+subset(BAI_wide_3, !is.na(BAI_wide_3$BAI.Pre_T1) & is.na(BAI_wide_3$BAI.Pre) & is.na(BAI_wide_3$BAI.Pre_T2))
+
+BAI_wide_3$BAI.Pre <- ifelse(!is.na(BAI_wide_3$BAI.Pre_T1) & is.na(BAI_wide_3$BAI.Pre) & is.na(BAI_wide_3$BAI.Pre_T2), BAI_wide_3$BAI.Pre_T1, BAI_wide_3$BAI.Pre)
+BAI_wide_3$BAI.Pre_T1 <- ifelse(!is.na(BAI_wide_3$BAI.Pre_T1) & !is.na(BAI_wide_3$BAI.Pre) & is.na(BAI_wide_3$BAI.Pre_T2), NA, BAI_wide_3$BAI.Pre_T1)
+
+# Aucun qui a juste T2
+subset(BAI_wide_3, is.na(BAI_wide_3$BAI.Pre_T1) & is.na(BAI_wide_3$BAI.Pre) & !is.na(BAI_wide_3$BAI.Pre_T2))
+
+BAI_wide_4 <- data.frame(id = BAI_wide_3$id, BAI_pre = as.numeric(BAI_wide_3$BAI.Pre), BAI_T1 = as.numeric(BAI_wide_3$BAI.Pre_T1), BAI_T2 = as.numeric(BAI_wide_3$BAI.Pre_T2))
+```
+
+## BDI
+```{r}
+bdi <- read.csv("Excel/Marc_BDIwide.csv", sep = ";")
+bdi
+BDI <-  data.frame(id = bdi$PatientCode, tps_de_mesure = bdi$tblCondition.Nom, bdi = as.numeric(bdi$BDITot))
+
+BDI
+
+sjmisc::frq(BDI$tps_de_mesure)
+
+
+BDI <- BDI[!(BDI$tps_de_mesure == "Exclusion" | BDI$tps_de_mesure=="abandon" | BDI$tps_de_mesure== "desistement" | BDI$tps_de_mesure== "TOC_controle" | BDI$tps_de_mesure == "Post_T1" | BDI$tps_de_mesure == "Post_T2" | BDI$tps_de_mesure == "Post" | BDI$tps_de_mesure == "Post-RV" | BDI$tps_de_mesure == "post_6_mois" | BDI$tps_de_mesure == "post_1_an" | BDI$tps_de_mesure =="Bloc_0" | BDI$tps_de_mesure=="MI" | BDI$tps_de_mesure== "Mid"| BDI$tps_de_mesure== "post"),]
+
+sjmisc::frq(BDI$tps_de_mesure)
+
+BDI_wide <- reshape(BDI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BDI_wide
+
+# 1689 et 1855 ont juste controle, donc --> Pre
+subset(BDI, tps_de_mesure == "controle")
+BDI['tps_de_mesure'][BDI['tps_de_mesure'] == "controle"] <- "Pre"
+
+# PRe_2 ont tous aussi un Pre. donc --> Pre_T2
+subset(BDI, tps_de_mesure == "PRe_2")
+subset(BDI_wide, !is.na(BDI_wide$bdi.PRe_2) & (!is.na(BDI_wide$bdi.Pre)))
+BDI['tps_de_mesure'][BDI['tps_de_mesure'] == "PRe_2"] <- "Pre_T2"
+sjmisc::frq(BDI$tps_de_mesure)
+
+
+# Tous les controle_PRe ont juste ce score là. --> Pre.
+subset(BDI_wide, !is.na(BDI_wide$bdi.controle_PRe) & (!is.na(BDI_wide$bdi.Pre_T1) | !is.na(BDI_wide$bdi.Pre) | !is.na(BDI_wide$bdi.Pre_T2 | !is.na(BDI_wide$bdi.controle_PRe_2))))
+BDI['tps_de_mesure'][BDI['tps_de_mesure'] == "controle_PRe"] <- "Pre"
+
+# controle_PRe_2 --> Pre
+subset(BDI_wide, !is.na(BDI_wide$bdi.controle_PRe_2) & (!is.na(BDI_wide$bdi.Pre_T1) | !is.na(BDI_wide$bdi.Pre) | !is.na(BDI_wide$bdi.Pre_T2)))
+BDI['tps_de_mesure'][BDI['tps_de_mesure'] == "controle_PRe_2"] <- "Pre"
+
+
+BDI_wide_2 = reshape(BDI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BDI_wide_2
+```
+```{r}
+# Aucun a les 3 scores Pre.
+subset(BDI_wide_2, !is.na(BDI_wide_2$bdi.Pre_T2) & !is.na(BDI_wide_2$bdi.Pre) & !is.na(BDI_wide_2$bdi.Pre_T1))
+# 4 id ont juste un Pre T2
+subset(BDI_wide_2, !is.na(BDI_wide_2$bdi.Pre_T2) & is.na(BDI_wide_2$bdi.Pre) & is.na(BDI_wide_2$bdi.Pre_T1))
+BDI$tps_de_mesure <- ifelse((BDI$id == "2603" | BDI$id == "3170" | BDI$id == "3181" | BDI$id == "3185"), "Pre", BDI$tps_de_mesure)
+
+BDI_wide_3 = reshape(BDI, idvar = "id", timevar = "tps_de_mesure", direction = "wide")
+BDI_wide_3
+
+# Ceux qui ont Pre et T1
+subset(BDI_wide_3, !is.na(BDI_wide_3$bdi.Pre_T1) & !is.na(BDI_wide_3$bdi.Pre) & is.na(BDI_wide_3$bdi.Pre_T2))
+BDI_wide_3[BDI_wide_3$id=="1945",] <- c("1945", NA, 18, 28)
+BDI_wide_3[BDI_wide_3$id=="1945",]
+BDI_wide_3[BDI_wide_3$id=="2300",] <- c("2300", NA, 29, 21)
+BDI_wide_3[BDI_wide_3$id=="2300",]
+BDI_wide_3[BDI_wide_3$id=="8000",] <- c("8000", NA, 13, 28)
+BDI_wide_3[BDI_wide_3$id=="8000",]
+
+# 243 id ont juste un T1
+subset(BDI_wide_3, !is.na(BDI_wide_3$bdi.Pre_T1) & is.na(BDI_wide_3$bdi.Pre) & is.na(BDI_wide_3$bdi.Pre_T2))
+
+BDI_wide_3$bdi.Pre <- ifelse(!is.na(BDI_wide_3$bdi.Pre_T1) & is.na(BDI_wide_3$bdi.Pre) & is.na(BDI_wide_3$bdi.Pre_T2), BDI_wide_3$bdi.Pre_T1, BDI_wide_3$bdi.Pre)
+BDI_wide_3$bdi.Pre_T1 <- ifelse(!is.na(BDI_wide_3$bdi.Pre_T1) & !is.na(BDI_wide_3$bdi.Pre) & is.na(BDI_wide_3$bdi.Pre_T2), NA, BDI_wide_3$bdi.Pre_T1)
+
+# Aucun qui a juste T2
+subset(BDI_wide_3, is.na(BDI_wide_3$bdi.Pre_T1) & is.na(BDI_wide_3$bdi.Pre) & !is.na(BDI_wide_3$bdi.Pre_T2))
+
+BDI_wide_4 <- data.frame(id = BDI_wide_3$id, BDI_pre = as.numeric(BDI_wide_3$bdi.Pre), BDI_T1 = as.numeric(BDI_wide_3$bdi.Pre_T1), BDI_T2 = as.numeric(BDI_wide_3$bdi.Pre_T2))
+```
+
+
+
+```{r}
+x <- readxl::read_excel("Base de données (neuropsy) – version à jour.xlsx")
+```
+
+
+# Joindre les 3 dataframes
+```{r}
+df_CAARS_YGTSS <- merge(CAARS_wide_2, YGTSS_wide, by.x = "id", by.y = "id", all = TRUE)
+df_CAARS_YGTSS_BAI <- merge(df_CAARS_YGTSS, BAI_wide_4, by.x = "id", by.y = "id", all = TRUE)
+df_all___ <- merge(df_CAARS_YGTSS_BAI, BDI_wide_4, by.x = "id", by.y = "id", all = TRUE)
+
+HD <- data.frame(id = x$ID, categorie = x$Groupes)
+HD
+df_w_HD <- merge(df_all___, HD, by.x = "id", by.y = "id", all = TRUE)
+df_w_HD
+```
+
+# Retrait des participants qui n'ont pas fait le CAARS (mais qui ont été ajoutés au df pcq ont fait le YGTSS)
+```{r}
+df_all__ <- df_w_HD[complete.cases(df_w_HD$CAARS.Pre), ]
+df_all_ <- subset(df_all__, !is.na(BAI_pre) | !is.na(BAI_T1)| !is.na(BAI_T2))
+df_allz <- subset(df_all__, !is.na(BDI_pre) | !is.na(BDI_T1)| !is.na(BDI_T2))
+
+subset(df_allz, categorie == "HD")
+df_all <- subset(df_allz, id != 1663 & id != 1667 & id != 1670 & id != 1672 & id != 1673 & id != 1696 & id != 1810 & id != 2023 & id != 2026 & id != 2028 & id != 2057 & id != 2063 & id != 2065 & id != 2073 & id != 2076)
+df_all
+```
+
+# Formation des groupes
+TOUS CEUX QUI ONT PASSÉ LE YGTSS ONT TOURETTE. DONC PAS BESOIN D'UTILISER MÉDIANE POUR YGTSS
+
+--> SGT- : ceux qui ont passé le YGTSS et qui < médiane au CAARS
+--> SGT + symptomatologie TDAH : ceux qui ont passé le YGTSS et >= médiane au CAARS
+--> contrôles : ont PAS passé le YGTSS ET < médiane au CAARS
+--> COntrôles avec symptomatologie TDAH : ont PAS passé le YGTSS et >= médiane CAARS du groupe ctrl
+```{r}
+# Médiane CAARS sans les scores des contrôles
+df_SGT <- df_all[complete.cases(df_all$YGTSS.Pre|df_all$YGTSS.Pre_T1|df_all$YGTSS.Pre_T2), ]
+#df_SGT # 91 participants SGT+ ou SGT -
+median(df_SGT$CAARS.Pre, na.rm = TRUE) #33
+
+# Médiane CAARS des contrôles
+df_ctrl_all <- df_all[!complete.cases(df_all$YGTSS.Pre|df_all$YGTSS.Pre_T1|df_all$YGTSS.Pre_T2), ]
+#df_ctrl_all # 165 participants ctrl ou TDAH-
+median(df_ctrl_all$CAARS.Pre) #30
+
+df_all$groupe <- ifelse(is.na(df_all$YGTSS.Pre) & is.na(df_all$YGTSS.Pre_T1) & is.na(df_all$YGTSS.Pre_T2) & df_all$CAARS.Pre < 30, "Contrôle-", 0)
+df_all$groupe <- ifelse(is.na(df_all$YGTSS.Pre) & is.na(df_all$YGTSS.Pre_T1) & is.na(df_all$YGTSS.Pre_T2) & df_all$CAARS.Pre >= 30, "Contrôle+", df_all$groupe)
+df_all$groupe <- ifelse(!(df_all$groupe == "Contrôle-") & !(df_all$groupe == "Contrôle+") & df_all$CAARS.Pre < 33, "SGT-",df_all$groupe)
+df_all$groupe <- ifelse(!(df_all$groupe == "Contrôle-") & !(df_all$groupe == "Contrôle+") & df_all$CAARS.Pre >= 33, "SGT+",df_all$groupe)
+
+df_SGT$groupe <- ifelse(df_SGT$CAARS.Pre < 32, "SGT-", 0)
+df_SGT$groupe <- ifelse(df_SGT$CAARS.Pre >= 32, "SGT+",df_SGT$groupe)
+
+frq(df_all$groupe)
+frq(df_SGT$groupe)
+```
+
+
+# BAI & BDI vérification des variables Pre
+
+## Score BAI et BDI Pre en fonction de la variance entre T1 et T2
+BAI : 0.75        https://bmcprimcare.biomedcentral.com/articles/10.1186/1471-2296-12-66#:~:text=The%20BAI%20has%20a%20high,75%20%5B8%5D.
+BDI : 0.75        
+
+BAI : Skewness OK, kurtose négligeable. 21 prticipants
+BDI : Skewness OK, kurtose négligeable. 1 participant
+```{r}
+# BAI
+sd_T1_BAI = sd(df_all$BAI_T1, na.rm = TRUE)
+SEM_T1_BAI = sd_T1_BAI*sqrt(1-0.75)
+sd_T2_BAI = sd(df_SGT$BAI_T2, na.rm = TRUE)
+SEM_T2_BAI = sd_T2_BAI*sqrt(1-0.75)
+SEdiff_BAI = sqrt((SEM_T1_BAI^2)+(SEM_T2_BAI^2))
+IC90_BAI = SEdiff_BAI*1.64
+IC90_BAI # 9.17
+
+df_all$delta_BAI_pre = df_all$BAI_T2 - df_all$BAI_T1
+
+jmv::descriptives(df_all, vars(delta_BAI_pre), skew = T, kurt = T) # NOT OK
+
+subset(df_all, abs(delta_BAI_pre) >= IC90_BAI)
+
+df_all$BAI_pre_mean <- ifelse(!is.na(df_all$BAI_pre), df_all$BAI_pre, NA)
+df_all$BAI_pre_mean
+df_all$BAI_pre_mean <- ifelse(abs(df_all$delta_BAI_pre) >= IC90_BAI & is.na(df_all$BAI_pre), df_all$BAI_T2, df_all$BAI_pre_mean)
+df_all$BAI_pre_mean
+df_all$BAI_pre_mean <- ifelse(abs(df_all$delta_BAI_pre) < IC90_BAI & is.na(df_all$BAI_pre),rowMeans(df_all[,c('BAI_T1', 'BAI_T2')], na.rm=TRUE), df_all$BAI_pre_mean)
+df_all$delta_BAI_pre
+df_all$BAI_pre_mean <- ifelse(!is.na(df_all$BAI_T1) & !is.na(df_all$BAI_T2),rowMeans(df_all[,c('BAI_T1', 'BAI_T2')], na.rm=TRUE), df_all$BAI_pre_mean)
+df_all$BAI_pre_mean
+
+
+# BDI
+subset(df_all, !is.na(BDI_pre) & !is.na(BDI_T2)) # 2137, 2145 & 2146
+subset(df_all, is.na(BDI_pre) & is.na(BDI_T1) & !is.na(BDI_T2))
+subset(df_all, is.na(BDI_pre) & !is.na(BDI_T1) & is.na(BDI_T2))
+
+df_all$BDI_T1 <- ifelse(df_all$id == 2137 | df_all$id == 2145 | df_all$id == 2146, df_all$BDI_pre, df_all$BDI_T1)
+df_all$BDI_pre <- ifelse(df_all$id == 2137 | df_all$id == 2145 | df_all$id == 2146, NA, df_all$BDI_pre)
+
+
+
+sd_T1_BDI = sd(df_all$BDI_T1, na.rm = TRUE)
+SEM_T1_BDI = sd_T1_BDI*sqrt(1-0.75)
+sd_T2_BDI = sd(df_SGT$BDI_T2, na.rm = TRUE)
+SEM_T2_BDI = sd_T2_BDI*sqrt(1-0.75)
+SEdiff_BDI = sqrt((SEM_T1_BDI^2)+(SEM_T2_BDI^2))
+IC90_BDI = SEdiff_BDI*1.64
+IC90_BDI # 26.04
+
+df_all$delta_BDI_pre = df_all$BDI_T2 - df_all$BDI_T1
+
+jmv::descriptives(df_all, vars(delta_BDI_pre), skew = T, kurt = T) # NOT OK
+
+subset(df_all, abs(delta_BDI_pre) >= IC90_BDI) # juste id 3112
+
+df_all$BDI_pre_mean <- ifelse(is.na(df_all$BDI_pre),rowMeans(df_all[,c('BDI_T1', 'BDI_T2')], na.rm=TRUE), df_all$BDI_pre)
+df_all$BDI_pre_mean <- ifelse(df_all$id == 3112, df_all$BDI_T2, df_all$BDI_pre_mean)
+#df_all$BDI_pre_mean
+
+BAI_BDI <- data.frame(df_all$id, df_all$BAI_pre, df_all$BAI_T1, df_all$BAI_T2, df_all$BAI_pre_mean, df_all$BDI_pre, df_all$BDI_T1, df_all$BDI_T2, df_all$BDI_pre_mean)
+write_xlsx(x = BAI_BDI, path = "BAI_BDI_pre_mean.xlsx", col_names = TRUE)
+```
+
+## YGTSS total
+### YGTSS vérification des variables Pre, Pre T1, Pre T2 et établir le score qui sera utilisé pour chaque participant
+```{r}
+# Parmi ceux qui ont fait le YGTSS (donc ceux du df_SGT), est-ce que ceux qui ont pas fait Pre ont fait Pre 6 mois et Pre 1 an ? ou y'en a qui ont fait les 3 ou juste T1 ou T2?
+subset(df_SGT, is.na(YGTSS.Pre))# 2060 a fait Pre T2 mais pas T1
+
+# Est-ce que ceux qui ont fait le Pre ont aussi pas fait le prré t1 et Pre t2
+subset(df_SGT, !is.na(YGTSS.Pre)) # --> OUI. Donc pour tous ceux qui ont fait Pre, on prend leur score Pre
+```
+
+### Vérification de la variance entre T1 et T2
+
+Coeff de fidélité test-retest = 0.84
+
+```{r}
+# N = 30 sub qui ont T1/T2 au YGTSS
+# Les sub pour qui on va devoir faire la moyenne T1 T2 ou enlever le participant
+sd_pre_T1 = sd(df_all$YGTSS.Pre_T1, na.rm = TRUE)
+SEM_pre_T1 = sd_pre_T1*sqrt(1-0.84)
+
+sd_pre_T2 = sd(df_all$YGTSS.Pre_T2, na.rm = TRUE)
+SEM_pre_T2 = sd_pre_T2*sqrt(1-0.84)
+
+SEdiff = sqrt((SEM_pre_T1^2)+(SEM_pre_T2^2))
+SEdiff
+
+IC90 = SEdiff*1.64 # 15.41. une diff pèlus élevée que ça entre T1 et T2 est considérée comme trop gros changement
+
+# Différence T1 T2. Ajout dans le df complet et dans le df juste SGT
+
+df_all$delta_YGTSS.Pre = df_all$YGTSS.Pre_T2 - df_all$YGTSS.Pre_T1
+
+# Vérification de la normalité de la distribution des différences T1-T2
+jmv::descriptives(df_all, vars(delta_YGTSS.Pre), skew = T, kurt = T) # OK!
+
+# Retrait des id dont la diff T1-T2 est trop élevée
+subset(df_all, abs(delta_YGTSS.Pre) >= IC90) # id 2034 & 2079
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$YGTSS.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('YGTSS.Pre_T1', 'YGTSS.Pre_T2')], na.rm=TRUE), df_all$YGTSS.Pre)
+
+#id 2060 qui a juste T2 & ceux avec variance trop élevée qu'on prend T2
+df_all$YGTSS.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2034 | df_all$id == 2079, df_all$YGTSS.Pre_T2, df_all$YGTSS.Pre_mean)
+```
+
+
+## Nbr_moteur
+```{r}
+sd_T1_nbr_moteur = sd(df_all$nbr_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_nbr_moteur = sd_T1_nbr_moteur*sqrt(1-0.84)
+sd_T2_nbr_moteur = sd(df_all$nbr_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_nbr_moteur = sd_T2_nbr_moteur*sqrt(1-0.84)
+SEdiff_nbr_moteur = sqrt((SEM_T1_nbr_moteur^2)+(SEM_T2_nbr_moteur^2))
+IC90_nbr_moteur = SEdiff_nbr_moteur*1.64
+IC90_nbr_moteur
+
+df_all$delta_nbr_moteur_Pre = df_all$nbr_moteur.Pre_T2 - df_all$nbr_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_nbr_moteur_Pre), skew = T, kurt = T) # OK!
+
+subset(df_all, abs(delta_nbr_moteur_Pre) >= IC90_nbr_moteur) # id 1642, 2023 & 2040
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$nbr_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('nbr_moteur.Pre_T1', 'nbr_moteur.Pre_T2')], na.rm=TRUE), df_all$nbr_moteur.Pre)
+
+#id 2060 qui a juste T2
+df_all$nbr_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 1642 | df_all$id == 2023 | df_all$id == 2040, df_all$nbr_moteur.Pre_T2, df_all$nbr_moteur.Pre_mean)
+```
+
+## Nbr_phonique
+```{r}
+sd_T1_nbr_phonique = sd(df_all$nbr_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_nbr_phonique = sd_T1_nbr_phonique*sqrt(1-0.84)
+sd_T2_nbr_phonique = sd(df_all$nbr_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_nbr_phonique = sd_T2_nbr_phonique*sqrt(1-0.84)
+SEdiff_nbr_phonique = sqrt((SEM_T1_nbr_phonique^2)+(SEM_T2_nbr_phonique^2))
+IC90_nbr_phonique = SEdiff_nbr_phonique*1.64
+IC90_nbr_phonique
+
+df_all$delta_nbr_phonique_Pre = df_all$nbr_phonique.Pre_T2 - df_all$nbr_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_nbr_phonique_Pre), skew = T, kurt = T) # NOT OK
+
+subset(df_all, abs(delta_nbr_phonique_Pre) >= IC90_nbr_phonique) # id 2029, 2031, 2042, 2058 & 2079
+
+df_all$nbr_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('nbr_phonique.Pre_T1', 'nbr_phonique.Pre_T2')], na.rm=TRUE), df_all$nbr_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$nbr_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2029 | df_all$id == 2031 | df_all$id == 2042 | df_all$id == 2058 | df_all$id == 2079, df_all$nbr_phonique.Pre_T2, df_all$nbr_phonique.Pre_mean)
+```
+
+## Frq_moteur
+```{r}
+sd_T1_frq_moteur = sd(df_all$frq_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_frq_moteur = sd_T1_frq_moteur*sqrt(1-0.84)
+sd_T2_frq_moteur = sd(df_all$frq_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_frq_moteur = sd_T2_frq_moteur*sqrt(1-0.84)
+SEdiff_frq_moteur = sqrt((SEM_T1_frq_moteur^2)+(SEM_T2_frq_moteur^2))
+IC90_frq_moteur = SEdiff_frq_moteur*1.64
+IC90_frq_moteur
+
+df_all$delta_frq_moteur_Pre = df_all$frq_moteur.Pre_T2 - df_all$frq_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_frq_moteur_Pre), skew = T, kurt = T) # Kurt
+
+subset(df_all, abs(delta_frq_moteur_Pre) >= IC90_frq_moteur) # id 2026
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$frq_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('frq_moteur.Pre_T1', 'frq_moteur.Pre_T2')], na.rm=TRUE), df_all$frq_moteur.Pre)
+
+#id 2060 qui a juste T2
+df_all$frq_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2026, df_all$frq_moteur.Pre_T2, df_all$frq_moteur.Pre_mean)
+```
+
+## Frq_phonique
+```{r}
+sd_T1_frq_phonique = sd(df_all$frq_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_frq_phonique = sd_T1_frq_phonique*sqrt(1-0.84)
+sd_T2_frq_phonique = sd(df_all$frq_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_frq_phonique = sd_T2_frq_phonique*sqrt(1-0.84)
+SEdiff_frq_phonique = sqrt((SEM_T1_frq_phonique^2)+(SEM_T2_frq_phonique^2))
+IC90_frq_phonique = SEdiff_frq_phonique*1.64
+IC90_frq_phonique
+
+df_all$delta_frq_phonique_Pre = df_all$frq_phonique.Pre_T2 - df_all$frq_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_frq_phonique_Pre), skew = T, kurt = T) # Kurt
+
+subset(df_all, abs(delta_frq_phonique_Pre) >= IC90_frq_phonique)
+
+df_all$frq_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('frq_phonique.Pre_T1', 'frq_phonique.Pre_T2')], na.rm=TRUE), df_all$frq_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$frq_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2042 | df_all$id == 2058 | df_all$id == 2079, df_all$frq_phonique.Pre_T2, df_all$frq_phonique.Pre_mean)
+```
+## Int_moteur
+```{r}
+sd_T1_int_moteur = sd(df_all$int_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_int_moteur = sd_T1_int_moteur*sqrt(1-0.84)
+sd_T2_int_moteur = sd(df_all$int_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_int_moteur = sd_T2_int_moteur*sqrt(1-0.84)
+SEdiff_int_moteur = sqrt((SEM_T1_int_moteur^2)+(SEM_T2_int_moteur^2))
+IC90_int_moteur = SEdiff_int_moteur*1.64
+IC90_int_moteur
+
+df_all$delta_int_moteur_Pre = df_all$int_moteur.Pre_T2 - df_all$int_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_int_moteur_Pre), skew = T, kurt = T) # Kurt
+
+subset(df_all, abs(delta_int_moteur_Pre) >= IC90_int_moteur) # 8 id
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$int_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('int_moteur.Pre_T1', 'int_moteur.Pre_T2')], na.rm=TRUE), df_all$int_moteur.Pre)
+
+df_all$int_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 1627 | df_all$id == 1642 | df_all$id == 2040 | df_all$id == 2055 | 
+                                       df_all$id == 2065 | df_all$id == 2069 | df_all$id == 2074 | df_all$id == 2076, df_all$int_moteur.Pre_T2, df_all$int_moteur.Pre_mean)
+```
+## Int_phonique
+```{r}
+sd_T1_int_phonique = sd(df_all$int_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_int_phonique = sd_T1_int_phonique*sqrt(1-0.84)
+sd_T2_int_phonique = sd(df_all$int_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_int_phonique = sd_T2_int_phonique*sqrt(1-0.84)
+SEdiff_int_phonique = sqrt((SEM_T1_int_phonique^2)+(SEM_T2_int_phonique^2))
+IC90_int_phonique = SEdiff_int_phonique*1.64
+IC90_int_phonique
+
+df_all$delta_int_phonique_Pre = df_all$int_phonique.Pre_T2 - df_all$int_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_int_phonique_Pre), skew = T, kurt = T) # PAS OK
+
+subset(df_all, abs(delta_int_phonique_Pre) >= IC90_int_phonique) # id 2042 et 2058
+
+df_all$int_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('int_phonique.Pre_T1', 'int_phonique.Pre_T2')], na.rm=TRUE), df_all$int_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$int_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2042 | df_all$id == 2058, df_all$int_phonique.Pre_T2, df_all$int_phonique.Pre_mean)
+```
+## Comp_moteur
+```{r}
+sd_T1_comp_moteur = sd(df_all$comp_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_comp_moteur = sd_T1_comp_moteur*sqrt(1-0.84)
+sd_T2_comp_moteur = sd(df_all$comp_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_comp_moteur = sd_T2_comp_moteur*sqrt(1-0.84)
+SEdiff_comp_moteur = sqrt((SEM_T1_comp_moteur^2)+(SEM_T2_comp_moteur^2))
+IC90_comp_moteur = SEdiff_comp_moteur*1.64
+IC90_comp_moteur
+
+df_all$delta_comp_moteur_Pre = df_all$comp_moteur.Pre_T2 - df_all$comp_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_comp_moteur_Pre), skew = T, kurt = T)
+
+subset(df_all, abs(delta_comp_moteur_Pre) >= IC90_comp_moteur)
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$comp_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('comp_moteur.Pre_T1', 'comp_moteur.Pre_T2')], na.rm=TRUE), df_all$comp_moteur.Pre)
+
+df_all$comp_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 1488 | df_all$id == 2029 | df_all$id == 2069, df_all$comp_moteur.Pre_T2, df_all$comp_moteur.Pre_mean)
+```
+
+
+## Comp_phonique
+```{r}
+sd_T1_comp_phonique = sd(df_all$comp_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_comp_phonique = sd_T1_comp_phonique*sqrt(1-0.84)
+sd_T2_comp_phonique = sd(df_all$comp_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_comp_phonique = sd_T2_comp_phonique*sqrt(1-0.84)
+SEdiff_comp_phonique = sqrt((SEM_T1_comp_phonique^2)+(SEM_T2_comp_phonique^2))
+IC90_comp_phonique = SEdiff_comp_phonique*1.64
+IC90_comp_phonique
+
+df_all$delta_comp_phonique_Pre = df_all$comp_phonique.Pre_T2 - df_all$comp_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_comp_phonique_Pre), skew = T, kurt = T) # PAS OK
+
+subset(df_all, abs(delta_comp_phonique_Pre) >= IC90_comp_phonique)
+
+df_all$comp_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('comp_phonique.Pre_T1', 'comp_phonique.Pre_T2')], na.rm=TRUE), df_all$comp_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$comp_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2038 | df_all$id == 2069, df_all$comp_phonique.Pre_T2, df_all$comp_phonique.Pre_mean)
+```
+## Inter_moteur
+```{r}
+sd_T1_inter_moteur = sd(df_all$inter_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_inter_moteur = sd_T1_inter_moteur*sqrt(1-0.84)
+sd_T2_inter_moteur = sd(df_all$inter_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_inter_moteur = sd_T2_inter_moteur*sqrt(1-0.84)
+SEdiff_inter_moteur = sqrt((SEM_T1_inter_moteur^2)+(SEM_T2_inter_moteur^2))
+IC90_inter_moteur = SEdiff_inter_moteur*1.64
+IC90_inter_moteur
+
+df_all$delta_inter_moteur_Pre = df_all$inter_moteur.Pre_T2 - df_all$inter_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_inter_moteur_Pre), skew = T, kurt = T)
+
+subset(df_all, abs(delta_inter_moteur_Pre) >= IC90_inter_moteur)
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$inter_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('inter_moteur.Pre_T1', 'inter_moteur.Pre_T2')], na.rm=TRUE), df_all$inter_moteur.Pre)
+
+df_all$inter_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2061 | df_all$id == 2065 | df_all$id == 2074, df_all$inter_moteur.Pre_T2, df_all$inter_moteur.Pre_mean)
+```
+
+
+## Inter_phonique
+```{r}
+sd_T1_inter_phonique = sd(df_all$inter_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_inter_phonique = sd_T1_inter_phonique*sqrt(1-0.84)
+sd_T2_inter_phonique = sd(df_all$inter_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_inter_phonique = sd_T2_inter_phonique*sqrt(1-0.84)
+SEdiff_inter_phonique = sqrt((SEM_T1_inter_phonique^2)+(SEM_T2_inter_phonique^2))
+IC90_inter_phonique = SEdiff_inter_phonique*1.64
+IC90_inter_phonique
+
+df_all$delta_inter_phonique_Pre = df_all$inter_phonique.Pre_T2 - df_all$inter_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_inter_phonique_Pre), skew = T, kurt = T) # PAS OK
+
+subset(df_all, abs(delta_inter_phonique_Pre) >= IC90_inter_phonique)
+
+df_all$inter_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('inter_phonique.Pre_T1', 'inter_phonique.Pre_T2')], na.rm=TRUE), df_all$inter_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$inter_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2061, df_all$inter_phonique.Pre_T2, df_all$inter_phonique.Pre_mean)
+```
+
+## Deter_moteur
+```{r}
+sd_T1_deter_moteur = sd(df_all$deter_moteur.Pre_T1, na.rm = TRUE)
+SEM_T1_deter_moteur = sd_T1_deter_moteur*sqrt(1-0.84)
+sd_T2_deter_moteur = sd(df_all$deter_moteur.Pre_T2, na.rm = TRUE)
+SEM_T2_deter_moteur = sd_T2_deter_moteur*sqrt(1-0.84)
+SEdiff_deter_moteur = sqrt((SEM_T1_deter_moteur^2)+(SEM_T2_deter_moteur^2))
+IC90_deter_moteur = SEdiff_deter_moteur*1.64
+IC90_deter_moteur
+
+df_all$delta_deter_moteur_Pre = df_all$deter_moteur.Pre_T2 - df_all$deter_moteur.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_deter_moteur_Pre), skew = T, kurt = T)
+
+subset(df_all, abs(delta_deter_moteur_Pre) >= IC90_deter_moteur)
+
+# Si ya pas de score dans la colonne Pre (NA), on met la moyenne de T1 et T2 dans la colonne de moyenne Pre. Sinon (donc si ya un score dans la colonne Pre), on met le score de la colonne Pre
+df_all$deter_moteur.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('deter_moteur.Pre_T1', 'deter_moteur.Pre_T2')], na.rm=TRUE), df_all$deter_moteur.Pre)
+
+
+df_all$deter_moteur.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 1627 | df_all$id == 1642 | df_all$id == 1821 | df_all$id == 1863 | df_all$id == 2029
+                                       | df_all$id == 2034 | df_all$id == 2055 | df_all$id == 2073 | df_all$id == 2076 | df_all$id == 2084, df_all$deter_moteur.Pre_T2, df_all$deter_moteur.Pre_mean)
+```
+
+
+
+
+## Deter_phonique
+```{r}
+sd_T1_deter_phonique = sd(df_all$deter_phonique.Pre_T1, na.rm = TRUE)
+SEM_T1_deter_phonique = sd_T1_deter_phonique*sqrt(1-0.84)
+sd_T2_deter_phonique = sd(df_all$deter_phonique.Pre_T2, na.rm = TRUE)
+SEM_T2_deter_phonique = sd_T2_deter_phonique*sqrt(1-0.84)
+SEdiff_deter_phonique = sqrt((SEM_T1_deter_phonique^2)+(SEM_T2_deter_phonique^2))
+IC90_deter_phonique = SEdiff_deter_phonique*1.64
+IC90_deter_phonique
+
+df_all$delta_deter_phonique_Pre = df_all$deter_phonique.Pre_T2 - df_all$deter_phonique.Pre_T1
+
+jmv::descriptives(df_all, vars(delta_deter_phonique_Pre), skew = T, kurt = T) # PAS OK
+
+subset(df_all, abs(delta_deter_phonique_Pre) >= IC90_deter_phonique)
+
+df_all$deter_phonique.Pre_mean <- ifelse(is.na(df_all$YGTSS.Pre),rowMeans(df_all[,c('deter_phonique.Pre_T1', 'deter_phonique.Pre_T2')], na.rm=TRUE), df_all$deter_phonique.Pre)
+
+#id 2060 qui a juste T2
+df_all$deter_phonique.Pre_mean <- ifelse(df_all$id == 2060 | df_all$id == 2034 | df_all$id == 2079, df_all$deter_phonique.Pre_T2, df_all$deter_phonique.Pre_mean)
+```
+
+
+
+# Ajout âge et sexe
+```{r}
+x <- readxl::read_excel("Base de données (neuropsy) – version à jour.xlsx")
+sociodemo <- data.frame(id = x$ID, age = x$QSÂge, sexe = x$QSSexe)
+sociodemo
+
+tab_complete <- merge(df_all, sociodemo, by.x = "id", by.y = "id", all = TRUE)
+
+tab_complete_2 <- tab_complete[complete.cases(tab_complete$CAARS.Pre),]
+tab_complete_2
+```
+
+
+```{r}
+write_xlsx(x = tab_complete_2, path = "Excel/data_stats_.xlsx", col_names = TRUE)
+
+```
+
+
+```{r}
+tab <- readxl::read_excel("Excel/data_stats.xlsx")
+tab
+agesexe <- readxl::read_excel("Excel/age et sexe.xlsx")
+age_sexe <- data.frame(id = agesexe$PatientCode, date_naissance = agesexe$DateDeNaissance, sexe = agesexe$Sexe)
+age_sexe
+tab_complete_3 <- merge(tab, age_sexe, by.x = "id", by.y = "id", all = TRUE)
+tab_complete_3
+tab_complete_4 <- tab_complete_3[complete.cases(tab_complete_3$CAARS.Pre),]
+tab_complete_4
+
+write_xlsx(x = tab_complete_4, path = "Excel/age_sexe_265.xlsx", col_names = TRUE)
+```
+
+
+

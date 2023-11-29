@@ -23,127 +23,62 @@ library('haven')
 library('readxl')
 library("writexl")
 library('tidyr')
+library('tidyverse')
+library('ggpubr')
+library('broom')
+library(robustbase)
+library(WRS2)
 ```
 
 ```{r}
-stats <- readxl::read_excel("Excel/data_stats.xlsx")
-stats
+stats_all <- readxl::read_excel("Excel/data_stats.xlsx")
+stats_all
 
-stats <- stats[complete.cases(stats$BAI),]
-stats <- stats[complete.cases(stats$BDI),]
-stats <- subset(stats, groupe != "Contrôle+")
-stats
+# dataframe avec les contrôles et ceux qui ont fait le post YGTSS
+stats <- subset(stats_all, (groupe == "Contrôle+" | groupe == "Contrôle-") | (!is.na(YGTSS.Post) & !is.na(frq_moteur.Post) & !is.na(frq_phonique.Post)))
 
+# Réévaluation médiane caars avec le sample de controle et ceux qui ont fait pré-post
+median(subset(stats, (groupe == "SGT+" | groupe == "SGT-"))$CAARS, na.rm = TRUE) #32 --> OK, MÊME CHOSE
+
+
+
+
+
+
+stats$id <- factor(stats$id) # Important pour ANCOVA que id soit un facteur
+
+frq(stats$groupe)
+stats$groupe <- ifelse (stats$groupe == "Contrôle-", "Control-", stats$groupe)
+stats$groupe <- ifelse (stats$groupe == "Contrôle+", "Control+", stats$groupe)
+stats$groupe <- ifelse (stats$groupe == "SGT-", "GTS-", stats$groupe)
+stats$groupe <- ifelse (stats$groupe == "SGT+", "GTS+", stats$groupe)
 frq(stats$groupe)
 ```
 
-# Vérification des variables - Postulats
+# Postulats
 
-## Continues :
+## Variables continues :
 
 1. Variabilité --> étendue doit couvrir toutes les rép attendues
 2. Normalité
-    Souvent entre +/- 1 c’est considéré ok
-    Certains acceptent des skewness entre +/- 2 et des kurtosis entre +/-7 (Curran, West, & Finch, 1996)
-    Et utilisez vos yeux (histogramme)!
-    
-    Quoi faire avec les distributions anormales?
-      --> Réviser les postulats des analyses
-          Certaines analyses sont robustes à l’anormalité
-      --> Est-ce que la population peut être distribuée de façon anormale sur cette variable?
-          Peut-être que l’échantillon est rePresentatif, mais que c’est la population qui est anormale
-
-    Pour régler le problème:
-        Laissez tomber la variable problématique
-        Vérifiez vos scores extrêmes --> Les retirer peut normaliser une variable
-        Transformez votre variable
-        
 3. Scores extrêmes
 
-### Variabilité & normalité
-#### CAARS
-```{r}
-jmv::descriptives(stats, vars= vars(CAARSA.Pre, CAARSB.Pre, CAARSC.Pre, CAARSD.Pre, CAARSE.Pre, CAARS.Pre), skew = T, kurt = T, variance = TRUE)
-jmv::descriptives(stats, vars= vars(CAARSA.Post, CAARSB.Post, CAARSC.Post, CAARSD.Post, CAARSE.Post, CAARS.Post), skew = T, kurt = T, variance = TRUE)
-```
-
-#### BAI & BDI
-```{r}
-jmv::descriptives(stats, vars= vars(BAI, BDI), skew = T, kurt = T, variance = TRUE)
-```
-
-#### YGTSS
-```{r}
-jmv::descriptives(stats, vars= vars(YGTSS.Pre, YGTSS.Post, YGTSS.Post_6_mois, YGTSS.Post_1_an), skew = T, kurt = T, variance = TRUE)
-
-jmv::descriptives(stats, vars= vars(frq_moteur.Pre, frq_phonique.Pre, frq_moteur.Post, frq_phonique.Post, frq_moteur.Post_6_mois, frq_phonique.Post_6_mois, frq_moteur.Post_1_an, frq_phonique.Post_1_an), skew = T, kurt = T, variance = TRUE)
-```
 
 
 ### Scores extrêmes
-
 ```{r}
 scores_z = data.frame(id = stats$id, groupe = stats$groupe)
-```
 
-#### CAARS
-```{r}
-scores_z$CAARSA.Pre = scale(stats$CAARSA.Pre)
-scores_z$CAARSB.Pre = scale(stats$CAARSB.Pre)
-scores_z$CAARSC.Pre = scale(stats$CAARSC.Pre)
-scores_z$CAARSD.Pre = scale(stats$CAARSD.Pre)
-scores_z$CAARSE.Pre = scale(stats$CAARSE.Pre)
-scores_z$CAARS.Pre = scale(stats$CAARS.Pre)
-scores_z$CAARSA.Post = scale(stats$CAARSA.Post)
-scores_z$CAARSB.Post = scale(stats$CAARSB.Post)
-scores_z$CAARSC.Post = scale(stats$CAARSC.Post)
-scores_z$CAARSD.Post = scale(stats$CAARSD.Post)
-scores_z$CAARSE.Post = scale(stats$CAARSE.Post)
-scores_z$CAARS.Post = scale(stats$CAARS.Post)
+# CAARS
+scores_z$CAARS = scale(stats$CAARS)
+subset(scores_z, abs(CAARS)>3.29)
+# --> Aucun score extrême pour le CAARS
 
-
-subset(scores_z, abs(CAARSA.Pre)>3.29)
-subset(scores_z, abs(CAARSB.Pre)>3.29)
-subset(scores_z, abs(CAARSC.Pre)>3.29)
-subset(scores_z, abs(CAARSD.Pre)>3.29)
-subset(scores_z, abs(CAARSE.Pre)>3.29)
-subset(scores_z, abs(CAARS.Pre)>3.29)
-
-subset(scores_z, abs(CAARSA.Post)>3.29) # 1685
-subset(scores_z, abs(CAARSB.Post)>3.29)
-subset(scores_z, abs(CAARSC.Post)>3.29) # id 2019. z = 3.34
-subset(scores_z, abs(CAARSD.Post)>3.29)
-subset(scores_z, abs(CAARSE.Post)>3.29)
-subset(scores_z, abs(CAARS.Post)>3.29)
-```
-
-#### BAI & BDI
-```{r}
-scores_z$BAI = scale(stats$BAI)
-scores_z$BDI = scale(stats$BDI)
-
-
-subset(scores_z, abs(BAI)>3.29) # 3300. z = 4.11
-subset(scores_z, abs(BDI)>3.29) # 2029, 2362, 3112 & 3300
-
-# Retrait des 4 participants avec scores extrême BAI ou BDI
-stats <- subset(stats, id != 3300 & id !=2029 & id != 2362 & id !=3112)
-scores_z <- subset(scores_z, id != 3300 & id !=2029 & id != 2362 & id !=3112)
-frq(stats$groupe)
-
-# BDI : correction scores z --> 3.29
-#scores_z$BDI <- ifelse(abs(scores_z$BDI)>3.29,3.29,scores_z$BDI)
-#stats$BDI_c <- ifelse(abs(scores_z$BDI) == 3.29,(3.29*sd(stats$BDI, na.rm = TRUE))+mean(stats$BDI),stats$BDI)
-```
-
-#### YGTSS
-```{r}
+# YGTSS
 scores_z$YGTSS.Pre = scale(stats$YGTSS.Pre)
 scores_z$YGTSS.Post = scale(stats$YGTSS.Post)
 scores_z$YGTSS.Post_6_mois = scale(stats$YGTSS.Post_6_mois)
 scores_z$YGTSS.Post_1_an = scale(stats$YGTSS.Post_1_an)
-
-
 
 scores_z$frq_moteur.Pre = scale(stats$frq_moteur.Pre)
 scores_z$frq_phonique.Pre = scale(stats$frq_phonique.Pre)
@@ -153,10 +88,8 @@ scores_z$frq_moteur.Post_6_mois = scale(stats$frq_moteur.Post_6_mois)
 scores_z$frq_phonique.Post_6_mois = scale(stats$frq_phonique.Post_6_mois)
 scores_z$frq_moteur.Post_1_an = scale(stats$frq_moteur.Post_1_an)
 scores_z$frq_phonique.Post_1_an = scale(stats$frq_phonique.Post_1_an)
-```
 
 
-```{r}
 subset(scores_z, abs(YGTSS.Pre)>3.29)
 subset(scores_z, abs(YGTSS.Post)>3.29)
 subset(scores_z, abs(YGTSS.Post_6_mois)>3.29)
@@ -170,311 +103,829 @@ subset(scores_z, abs(frq_moteur.Post_6_mois)>3.29)
 subset(scores_z, abs(frq_phonique.Post_6_mois)>3.29)
 subset(scores_z, abs(frq_moteur.Post_1_an)>3.29)
 subset(scores_z, abs(frq_phonique.Post_1_an)>3.29)
+# --> aucun score extrême pour le YGTSS
+
+
+
+# BAI & BDI
+scores_z$BAI = scale(stats$BAI)
+scores_z$BDI = scale(stats$BDI)
+
+
+subset(scores_z, abs(BAI)>3.29)
+subset(scores_z, abs(BDI)>3.29) # 2029 --> z = 4.63
+
+
+# Retrait du score extrême BAI, mais PAS RETRAIT DU PARTICIPANT
+scores_z$BDI <- ifelse(abs(scores_z$BDI)>3.29,NA, scores_z$BDI)
+
+# Nouvelle colonne de valeurs non-standardisées pour les BDI, avec retrait du score BDI du participant 2029
+stats$BDI_cor <- ifelse(stats$id == 2029,NA, stats$BDI)
 ```
 
 # Postulats ANOVAs
-  1. Normalité
-     - Normalité de la distribution  d’échantillonnage de la VD pour chaque groupe
-          Kurtosis anormal: Peu problématique.
-          Skewness anormal: Problématique, sauf si tous les skewness des groupes vont dans le  même sens (tous skewed positivement ou tous négativement).
-          Quoi fare quand la normalité n'est pas respecté?
-              --> Utiliser un test non-paramétrique (McKight & Najab, 2010)
-                  3+ groupes : Test Kruskal-Wallis
-
-
-
+  1. Normalité de la VD pour chaque groupe
   2. Homogénéité de la variance
-  3. Indépendance des scores
+  3. Indépendance des scores --> OK
 
-## BAI & BDI
-Skewness BAI contrôle -. Mais OK pcq tous skewed positivement
-variance OK
+## Normalité & homogénéité de la variance
 ```{r}
-jmv::descriptives(stats, vars= vars(BAI, BDI), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+# Visualisation des distributions
+ggplot(stats,aes(x=BAI)) +geom_histogram()
+ggplot(stats,aes(x=BDI_cor)) +geom_histogram()
+ggplot(stats,aes(x=CAARS)) +geom_histogram()
+ggplot(stats,aes(x=YGTSS.Pre)) +geom_histogram()
+ggplot(stats,aes(x=frq_moteur.Pre)) +geom_histogram()
+ggplot(stats,aes(x=frq_phonique.Pre)) +geom_histogram()
 ```
 
-## CAARS
-Normalité OK
-Hétérogénéité OK
 ```{r}
-jmv::descriptives(stats, vars= vars(CAARSA.Pre, CAARSB.Pre, CAARSC.Pre, CAARSD.Pre, CAARSE.Pre, CAARS.Pre), skew = T, kurt = T, , variance = TRUE, splitBy = groupe)
-jmv::descriptives(stats, vars= vars(CAARSA.Post, CAARSB.Post, CAARSC.Post, CAARSD.Post, CAARSE.Post, CAARS.Post), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+# Age --> OK
+jmv::descriptives(stats, vars= vars(age), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
 ```
 
-#### YGTSS
+*** BAI & BDI (kurtosis) --> NON
 ```{r}
-jmv::descriptives(stats, vars= vars(YGTSS.Pre, YGTSS.Post, YGTSS.Post_6_mois, YGTSS.Post_1_an), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+# BAI & BDI_cor
+jmv::descriptives(stats, vars= vars(BAI, BDI_cor), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+```
 
-jmv::descriptives(stats, vars= vars(frq_moteur.Pre, frq_phonique.Pre), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+```{r}
+# CAARS
+jmv::descriptives(stats, vars= vars(CAARS), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+# NORMALITÉ --> OK
+# HOMOGÉNÉITÉ DE LA VARIANCE --> OK
+```
 
-jmv::descriptives(stats, vars= vars(frq_moteur.Post, frq_phonique.Post, frq_moteur.Post_6_mois, frq_phonique.Post_6_mois, frq_moteur.Post_1_an, frq_phonique.Post_1_an), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+```{r}
+jmv::descriptives(stats, vars= vars(YGTSS.Pre, frq_moteur.Pre, frq_phonique.Pre), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+# --> OK
 ```
 
 
-## Catégorielles (âge et sexe) :
 
-### Est-ce que les groupes sont comparables entre eux ?
-#### Sexe
+# Nbr participants SGT pour post 6 mois et 1 an
 ```{r}
+subset(stats, !is.na(YGTSS.Post_6_mois) & groupe == "GTS-")
+subset(stats, !is.na(YGTSS.Post_6_mois) & groupe == "GTS+")
+subset(stats, !is.na(YGTSS.Post_1_an) & groupe == "GTS-")
+subset(stats, !is.na(YGTSS.Post_1_an) & groupe == "GTS+")
+```
+
+
+# ANALYSES PRÉLIMINAIRES
+```{r}
+# Sexe
 frq(stats$groupe)
-sjmisc::frq(subset(stats, groupe == "Contrôle-")$sexe)
-sjmisc::frq(subset(stats, groupe == "SGT-")$sexe)
-sjmisc::frq(subset(stats, groupe == "SGT+")$sexe)
+sjmisc::frq(subset(stats, groupe == "Control-")$sexe)
+sjmisc::frq(subset(stats, groupe == "Control+")$sexe)
+sjmisc::frq(subset(stats, groupe == "GTS-")$sexe)
+sjmisc::frq(subset(stats, groupe == "GTS+")$sexe)
 
-df <- data.frame(groupe = c(rep("ctrl-", 75), rep("SGT-", 37), rep("SGT+", 33)),
-                 sexe = c(rep(1, 35), rep(0, 40),
-                           rep(1, 21), rep(0, 16),
-                           rep(1, 20), rep(0, 13)))
-#df
+df <- data.frame(groupe = c(rep("ctrl-", 19), rep("ctrl+", 24), rep("GTS-", 27), rep("GTS+", 28)),
+                 sexe = c(rep(1, 7), rep(0, 12),
+                          rep(1, 11), rep(0, 13),
+                           rep(1, 15), rep(0, 12),
+                           rep(1, 18), rep(0, 10)))
+
 chisq.test(df$groupe, df$sexe)
-#https://stackoverflow.com/questions/70497840/unequal-group-chi-square-test-in-r
 ```
 
-#### Âge
 ```{r}
-sjmisc::frq(stats$age) # 11-69
-sjmisc::frq(subset(stats, groupe == "Contrôle-")$age) # 15-64
-#sjmisc::frq(subset(stats, groupe == "Contrôle+")$age) # 11-64
-sjmisc::frq(subset(stats, groupe == "SGT-")$age) # 12-56
-sjmisc::frq(subset(stats, groupe == "SGT+")$age) # 11-63
+# Âge
+sjmisc::frq(stats$age) # 12-60
+sjmisc::frq(subset(stats, groupe == "Control-")$age) # 19-60
+sjmisc::frq(subset(stats, groupe == "Control+")$age) # 20-55
+sjmisc::frq(subset(stats, groupe == "GTS-")$age) # 12-56
+sjmisc::frq(subset(stats, groupe == "GTS+")$age) # 14-60
 
-Rmisc::summarySE(stats, measurevar = "age", na.rm = TRUE)
 Rmisc::summarySE(stats, measurevar = "age", groupvars = "groupe", na.rm = TRUE)
 
-
 afex::aov_ez(data = stats, dv = 'age', between = 'groupe', id = 'id', factorize = F)
-
-subset(stats, is.na(CAARSA.Pre))
-subset(stats, is.na(CAARSB.Pre))
-subset(stats, is.na(CAARSC.Pre))
-subset(stats, is.na(CAARSD.Pre))
-subset(stats, is.na(CAARSE.Pre))
-
 ```
 
-
-# ANALYSES
-
-
-## BAI & BDI
 ```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = BAI,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
+# BAI
+# ANOVA robuste Wilcox (pcq anormal)
+WRS2::t1waybt(BAI~groupe, data = stats, tr = 0.2, nboot = 1000)
+WRS2::mcppb20(BAI~groupe, data = stats, tr = 0.2, nboot = 1000) #--> fait aucun sens (comparer avec graphique)
 
-afex::aov_ez(data = stats, dv = 'BAI', between = 'groupe', id = 'id', factorize = F)
-
-#WRS2::t1waybt(BAI_c~groupe, data = stats, tr = 0.2, nboot = 1000)
-# Posthocs
-#WRS2::mcppb20(BAI_c~groupe, data = stats, tr = 0.2, nboot = 1000)
-
-
+anv_BAI <- afex::aov_ez(data = stats, dv = 'BAI', between = 'groupe', id = 'id', factorize = F)
+anv_BAI
+means <- emmeans(anv_BAI, ~ groupe)
+pairs(means,adjust='tukey')
 Rmisc::summarySE(stats, measurevar = "BAI", groupvars = "groupe", na.rm = TRUE)
 ```
 
 ```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = BDI,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
+# GRAPHIQUE ANOVA BAI
+# Calculate means and standard deviations by group
+summary_BAI <- stats %>% group_by(groupe) %>% summarise(mean = mean(BAI), sd = sd(BAI))
 
-anv_BDI <- afex::aov_ez(data = stats, dv = 'BDI', between = 'groupe', id = 'id', factorize = F)
-anv_BDI
-means <- emmeans(anv_BDI, ~ groupe)
-pairs(means,adjust='bonf')
-
-Rmisc::summarySE(stats, measurevar = "BDI", groupvars = "groupe", na.rm = TRUE)
+# Create a bar plot with error bars
+ggplot(summary_BAI, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "BAI") +
+  theme_minimal()
 ```
 
-## CAARS
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARS.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
 
-anv <- afex::aov_ez(data = stats, dv = 'CAARS.Pre', between = 'groupe', id = 'id', factorize = F)
+```{r}
+# BDI_cor
+
+#WRS2::t1waybt(BDI_cor~groupe, data = stats, tr = 0.2, nboot = 1000)
+#WRS2::mcppb20(BDI_cor~groupe, data = stats, tr = 0.2, nboot = 1000)  #fait aucun sens!!!
+
+
+
+anv_BDI_cor <- afex::aov_ez(data = stats, dv = 'BDI_cor', between = 'groupe', id = 'id', factorize = F)
+anv_BDI_cor
+means <- emmeans(anv_BDI_cor, ~ groupe)
+pairs(means,adjust='tukey')
+Rmisc::summarySE(stats, measurevar = "BDI_cor", groupvars = "groupe", na.rm = TRUE)
+
+
+# GRAPHIQUE ANOVA BDI_cor
+# Calculate means and standard deviations by group
+summary_BDI_cor <- stats %>% group_by(groupe) %>% summarise(mean = mean(BDI_cor, na.rm = TRUE), sd = sd(BDI_cor, na.rm = TRUE))
+
+# Create a bar plot with error bars
+ggplot(summary_BDI_cor, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "BDI") +
+  theme_minimal()
+```
+
+
+```{r}
+# CAARS total
+anv <- afex::aov_ez(data = stats, dv = 'CAARS', between = 'groupe', id = 'id', factorize = F)
 anv
 means <- emmeans(anv, ~ groupe)
 pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARS.Pre", groupvars = "groupe", na.rm = TRUE)
-```
+Rmisc::summarySE(stats, measurevar = "CAARS", groupvars = "groupe", na.rm = TRUE)
 
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARSA.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
+# GRAPHIQUE ANOVA CAARS
+# Calculate means and standard deviations by group
+summary_CAARS <- stats %>% group_by(groupe) %>% summarise(mean = mean(CAARS), sd = sd(CAARS))
 
-anv <- afex::aov_ez(data = stats, dv = 'CAARSA.Pre', between = 'groupe', id = 'id', factorize = F)
-anv
-means <- emmeans(anv, ~ groupe)
-pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARSA.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARSB.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-anv <- afex::aov_ez(data = stats, dv = 'CAARSB.Pre', between = 'groupe', id = 'id', factorize = F)
-anv
-means <- emmeans(anv, ~ groupe)
-pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARSB.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARSC.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-anv <- afex::aov_ez(data = stats, dv = 'CAARSC.Pre', between = 'groupe', id = 'id', factorize = F)
-anv
-means <- emmeans(anv, ~ groupe)
-pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARSC.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARSD.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-anv <- afex::aov_ez(data = stats, dv = 'CAARSD.Pre', between = 'groupe', id = 'id', factorize = F)
-anv
-means <- emmeans(anv, ~ groupe)
-pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARSD.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-
-```{r}
-ggplot(stats,
-       aes(x = groupe,
-           y = CAARSE.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-anv <- afex::aov_ez(data = stats, dv = 'CAARSE.Pre', between = 'groupe', id = 'id', factorize = F)
-anv
-means <- emmeans(anv, ~ groupe)
-pairs(means,adjust='bonf')
-Rmisc::summarySE(stats, measurevar = "CAARSE.Pre", groupvars = "groupe", na.rm = TRUE)
-frq(stats$groupe)
-```
-
-
-## YGTSS
-
-```{r}
-data_SGT <- subset(stats, groupe == "SGT+" | groupe == "SGT-")
-```
-
-```{r}
-ggplot(data_SGT,
-       aes(x = groupe,
-           y = YGTSS.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-
-t.test(YGTSS.Pre ~ groupe, data = data_SGT)
-Rmisc::summarySE(data_SGT, measurevar = "YGTSS.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-```{r}
-ggplot(data_SGT,
-       aes(x = groupe,
-           y = frq_moteur.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-
-t.test(frq_moteur.Pre ~ groupe, data = data_SGT)
-Rmisc::summarySE(data_SGT, measurevar = "frq_moteur.Pre", groupvars = "groupe", na.rm = TRUE)
-```
-
-```{r}
-ggplot(data_SGT,
-       aes(x = groupe,
-           y = frq_phonique.Pre,
-           colour=groupe,
-           fill=groupe)) +
-  stat_summary(fun = mean, geom = 'bar', alpha = 0.5) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.1) +
-  geom_point()
-
-
-t.test(frq_phonique.Pre ~ groupe, data = data_SGT)
-Rmisc::summarySE(data_SGT, measurevar = "frq_phonique.Pre", groupvars = "groupe", na.rm = TRUE)
+# Create a bar plot with error bars
+ggplot(summary_CAARS, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "CAARS") +
+  theme_minimal()
 ```
 
 
 
+## Nouvelle banque de données avec juste data_GTS+ et data_GTS- pour stats YGTSS
+```{r}
+data_GTS <- subset(stats, groupe == "GTS+" | groupe == "GTS-")
+
+# ***NE PAS ENLEVER*** Nécessaire pour avoir le bon nbr de niveaux pour la variable id
+data_GTS$id <- as.character(subset(stats, groupe == "GTS+" | groupe == "GTS-")$id)
+data_GTS$id <- as.factor(data_GTS$id)
+
+length(levels(data_GTS$id)) # 55
+nrow(data_GTS) # 55
+
+```
+
+```{r}
+# YGTSS total
+t.test(YGTSS.Pre ~ groupe, data = data_GTS)
+Rmisc::summarySE(data_GTS, measurevar = "YGTSS.Pre", groupvars = "groupe", na.rm = TRUE)
+
+# GRAPHIQUE YGTSS total
+summary_YGTSS_total <- data_GTS %>% group_by(groupe) %>% summarise(mean = mean(YGTSS.Pre), sd = sd(YGTSS.Pre))
+
+ggplot(summary_YGTSS_total, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "YGTSS total") +
+  theme_minimal()
+```
+
+
+```{r}
+# YGTSS moteur
+t.test(frq_moteur.Pre ~ groupe, data = data_GTS)
+Rmisc::summarySE(data_GTS, measurevar = "frq_moteur.Pre", groupvars = "groupe", na.rm = TRUE)
+# GRAPHIQUE YGTSS frq moteur
+summary_frq_moteur <- data_GTS %>% group_by(groupe) %>% summarise(mean = mean(frq_moteur.Pre), sd = sd(frq_moteur.Pre))
+
+ggplot(summary_frq_moteur, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "YGTSS frq moteur") +
+  theme_minimal()
+```
+
+
+```{r}
+# YGTSS phonique
+t.test(frq_phonique.Pre ~ groupe, data = data_GTS)
+Rmisc::summarySE(data_GTS, measurevar = "frq_phonique.Pre", groupvars = "groupe", na.rm = TRUE)
+
+# GRAPHIQUE YGTSS frq phonique
+summary_frq_phonique <- data_GTS %>% group_by(groupe) %>% summarise(mean = mean(frq_phonique.Pre), sd = sd(frq_phonique.Pre))
+
+ggplot(summary_frq_phonique, aes(x = groupe, y = mean, fill = groupe)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(width = 0.9)) +
+  labs(x = "Group", y = "YGTSS frq phonique") +
+  theme_minimal()
+```
+
+
+# ANALYSES PRINCIPALES - 1ER OBJECTIF : ANCOVA pré-post
+## YGTSS total
+### POSTULATS
+```{r}
+# Centrer covariable
+data_GTS$YGTSS.Pre_centre <- data_GTS$YGTSS.Pre - mean(data_GTS$YGTSS.Pre)
+# Visualisation
+ggplot(data_GTS, 
+       aes(x=YGTSS.Pre,
+           y=YGTSS.Post,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "YGTSS total pré", y = "YGTSS total post")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> OK
+jmv::descriptives(data_GTS, vars= vars(YGTSS.Post), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe --> OK
+GTS_moins <- subset(data_GTS, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=YGTSS.Pre, y=YGTSS.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-", 
+       x = "YGTSS total Pré", y = "YGTSS total Post")
+
+GTS_plus <- subset(data_GTS, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=YGTSS.Pre, y=YGTSS.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+", 
+       x = "YGTSS total Pré", y = "YGTSS total Post")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(YGTSS.Post~YGTSS.Pre, GTS_moins, na.action=na.exclude)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> OK
+reg_GTS_plus <- lm(YGTSS.Post~YGTSS.Pre, GTS_plus, na.action=na.exclude)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe
+ggplot(GTS_moins, aes(x = YGTSS.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "YGTSS.Pre centré", y = "Résiduels")
+
+ggplot(GTS_plus, aes(x = YGTSS.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "YGTSS.Pre centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité de la régression pour les différents groupes (ANCOVA assume que les groupes ont la mm pente de régression. Donc faut s'assurer que y'a pas d'interaction entre la CV et la VI)
+
+rstatix::anova_test(YGTSS.Post ~ groupe*YGTSS.Pre_centre, data = data_GTS, type = 2) # --> pas d'interaction --> OK
+```
+
+
+### ANCOVA YGTSS TOTAL
+```{r}
+ancova_total <- afex::aov_ez(data = data_GTS, dv = 'YGTSS.Post', between = 'groupe', id = 'id', covariate = 'YGTSS.Pre_centre', factorize = F)
+
+ancova_total
+
+Rmisc::summarySE(data_GTS, measurevar = "YGTSS.Pre", groupvars = "groupe", na.rm = TRUE)
+Rmisc::summarySE(data_GTS, measurevar = "YGTSS.Post", groupvars = "groupe", na.rm = TRUE)
+
+
+# Effect size
+effectsize::epsilon_squared(ancova_total, partial = T)
+
+# Graphique
+ggscatter(data_GTS, x = "YGTSS.Pre", y = "YGTSS.Post",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
+
+## YGTSS frq moteur
+### POSTULATS
+```{r}
+# Centrer covariable
+data_GTS$frq_moteur.Pre_centre <- data_GTS$frq_moteur.Pre - mean(data_GTS$frq_moteur.Pre)
+# Visualisation
+ggplot(data_GTS, 
+       aes(x=frq_moteur.Pre,
+           y=frq_moteur.Post,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "frq moteur pré", y = "frq moteur post")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> OK
+jmv::descriptives(data_GTS, vars= vars(frq_moteur.Post), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe --> ********NON*************
+GTS_moins <- subset(data_GTS, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=frq_moteur.Pre, y=frq_moteur.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-")
+GTS_plus <- subset(data_GTS, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=frq_moteur.Pre, y=frq_moteur.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(frq_moteur.Post~frq_moteur.Pre, GTS_moins)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> OK
+reg_GTS_plus <- lm(frq_moteur.Post~frq_moteur.Pre, GTS_plus)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe --> ******NON******
+ggplot(GTS_moins, aes(x = frq_moteur.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "frq_moteur.Pre centré", y = "Résiduels")
+
+ggplot(GTS_plus, aes(x = frq_moteur.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "frq_moteur.Pre centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité de la régression pour les différents groupes (ANCOVA assume que les groupes ont la mm pente de régression. Donc faut s'assurer que y'a pas d'interaction entre la CV et la VI)
+
+rstatix::anova_test(frq_moteur.Post ~ groupe*frq_moteur.Pre_centre, data = data_GTS, type = 2) # --> pas d'interaction --> OK
+```
+
+### ANCOVA frq tics moteurs
+```{r}
+# ANCOVA robuste pcq postulat de linéarité et homogénéité de la variance des résiduels sont pas respectés
+
+data_GTS$groupe <- as.factor(data_GTS$groupe)
+WRS2::ancova(YGTSS.Post ~ YGTSS.Pre + groupe, data = data_GTS)
+
+Rmisc::summarySE(data_GTS, measurevar = "frq_moteur.Pre", groupvars = "groupe", na.rm = TRUE)
+Rmisc::summarySE(data_GTS, measurevar = "frq_moteur.Post", groupvars = "groupe", na.rm = TRUE)
+
+# Effect size
+#effectsize::epsilon_squared(rob_ancova_moteur, partial = T)
+
+# Graphique
+ggscatter(data_GTS, x = "frq_moteur.Pre", y = "frq_moteur.Post",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
+
+## Frq tics phoniques
+### Postulats
+```{r}
+# Centrer covariable
+data_GTS$frq_phonique.Pre_centre <- data_GTS$frq_phonique.Pre - mean(data_GTS$frq_phonique.Pre)
+# Visualisation
+ggplot(data_GTS, 
+       aes(x=frq_phonique.Pre,
+           y=frq_phonique.Post,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "frq phonique pré", y = "frq phonique post")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> OK
+jmv::descriptives(data_GTS, vars= vars(frq_phonique.Post), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe --> ***BOF*** mais OK
+GTS_moins <- subset(data_GTS, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=frq_phonique.Pre, y=frq_phonique.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-")
+
+GTS_plus <- subset(data_GTS, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=frq_phonique.Pre, y=frq_phonique.Post))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(frq_phonique.Post~frq_phonique.Pre, GTS_moins)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> OK
+reg_GTS_plus <- lm(frq_phonique.Post~frq_phonique.Pre, GTS_plus)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe --> OK
+ggplot(GTS_moins, aes(x = frq_phonique.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "frq_phonique.Pre centré", y = "Résiduels")
+
+ggplot(GTS_plus, aes(x = frq_phonique.Pre_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "frq_phonique.Pre centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité de la régression pour les différents groupes (ANCOVA assume que les groupes ont la mm pente de régression. Donc faut s'assurer que y'a pas d'interaction entre la CV et la VI)
+
+rstatix::anova_test(frq_phonique.Post ~ groupe*frq_phonique.Pre_centre, data = data_GTS, type = 2) # --> pas d'interaction --> OK
+```
+
+### ANCOVA frq tics phoniques
+```{r}
+ancova_frq_phonique <- afex::aov_ez(data = data_GTS, dv = 'frq_phonique.Post', between = 'groupe', id = 'id', covariate = 'frq_phonique.Pre_centre', factorize = F)
+ancova_frq_phonique
+
+Rmisc::summarySE(data_GTS, measurevar = "frq_phonique.Pre", groupvars = "groupe", na.rm = TRUE)
+Rmisc::summarySE(data_GTS, measurevar = "frq_phonique.Post", groupvars = "groupe", na.rm = TRUE)
+
+# Effect size
+effectsize::epsilon_squared(ancova_frq_phonique, partial = T)
+
+# Graphique
+ggscatter(data_GTS, x = "frq_phonique.Pre", y = "frq_phonique.Post",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
 
 
 
-# Analyses à travers les différents temps de mesure
-https://www.datanovia.com/en/lessons/repeated-measures-anova-in-r/
+# 2E OBJECTIF - MAINTIEN DE LA RÉPONSE POST 6 MOIS (ANCOVA POST-POST 6 MOIS)
 
-## Nouveau tableau des scores YGTSS selon le temps de mesure (long format)
+## Nouveau dataframe
+```{r}
+data6mois <- subset(data_GTS, !is.na(YGTSS.Pre)  & !is.na(YGTSS.Post_6_mois))
+frq(data6mois$groupe)
+```
+
+## YGTSS total
+### POSTULATS
+```{r}
+# Centrer covariable
+data6mois$YGTSS.Post_centre <- data6mois$YGTSS.Post - mean(data6mois$YGTSS.Post)
+# Visualisation
+ggplot(data6mois, 
+       aes(x=YGTSS.Post,
+           y=YGTSS.Post_6_mois,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "YGTSS total pré", y = "YGTSS total Post_6_mois")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> OK
+jmv::descriptives(data6mois, vars= vars(YGTSS.Post_6_mois), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe
+    # GTS- --> **********NON***********
+GTS_moins <- subset(data6mois, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=YGTSS.Post, y=YGTSS.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-", 
+       x = "YGTSS total Post", y = "YGTSS total Post_6_mois")
+    # GTS+ --> OK
+GTS_plus <- subset(data6mois, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=YGTSS.Post, y=YGTSS.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+", 
+       x = "YGTSS total Post", y = "YGTSS total Post_6_mois")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(YGTSS.Post_6_mois~YGTSS.Post, GTS_moins, na.action=na.exclude)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> *******NON******* (kurtose)
+reg_GTS_plus <- lm(YGTSS.Post_6_mois~YGTSS.Post, GTS_plus, na.action=na.exclude)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe
+    #GTS- --> ***NON***
+ggplot(GTS_moins, aes(x = YGTSS.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "YGTSS.Post centré", y = "Résiduels")
+
+    #GTS+ --> OK
+ggplot(GTS_plus, aes(x = YGTSS.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "YGTSS.Post centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité des régressions
+      # interaction !!! --> NON
+
+rstatix::anova_test(YGTSS.Post_6_mois ~ groupe*YGTSS.Post_centre, data = data6mois, type = 2)
+    # Vérification des coefficients de corrélation
+data6mois %>% group_by(groupe) %>% rstatix::cor_test(YGTSS.Post_6_mois,YGTSS.Post)
+0.78-0.23
+```
+
+### ANCOVA YGTSS TOTAL
+```{r}
+# Postulats non respectés : linéarité, normalité des résiduels, homoscédasticité et homogénéité des droites de régression
+# --> utiliser modèle robuste
+# factoriser variable groupe pour ancova robuste WRS2
+data6mois$groupe <- as.factor(data6mois$groupe)
+
+
+WRS2::ancova(YGTSS.Post_6_mois ~ YGTSS.Post + groupe, data = data6mois)
+
+# --> NON
+
+# Graphique
+ggscatter(data6mois, x = "YGTSS.Post", y = "YGTSS.Post_6_mois",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
+
+
+
+## frq moteur
+### POSTULATS
+```{r}
+# Centrer covariable
+data6mois$frq_moteur.Post_centre <- data6mois$frq_moteur.Post - mean(data6mois$frq_moteur.Post)
+# Visualisation
+ggplot(data6mois, 
+       aes(x=frq_moteur.Post,
+           y=frq_moteur.Post_6_mois,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "frq_moteur pré", y = "frq_moteur Post_6_mois")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> OK
+jmv::descriptives(data6mois, vars= vars(frq_moteur.Post_6_mois), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe
+    # GTS- --> OK
+GTS_moins <- subset(data6mois, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=frq_moteur.Post, y=frq_moteur.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-", 
+       x = "frq_moteur total Post", y = "frq_moteur total Post_6_mois")
+    # GTS+ --> OK
+GTS_plus <- subset(data6mois, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=frq_moteur.Post, y=frq_moteur.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+", 
+       x = "frq_moteur total Post", y = "frq_moteur total Post_6_mois")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(frq_moteur.Post_6_mois~frq_moteur.Post, GTS_moins, na.action=na.exclude)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> OK
+reg_GTS_plus <- lm(frq_moteur.Post_6_mois~frq_moteur.Post, GTS_plus, na.action=na.exclude)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe
+    #GTS- --> OK
+ggplot(GTS_moins, aes(x = frq_moteur.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "frq_moteur.Post centré", y = "Résiduels")
+
+    #GTS+ --> OK
+ggplot(GTS_plus, aes(x = frq_moteur.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "frq_moteur.Post centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité des régressions --> OK
+
+rstatix::anova_test(frq_moteur.Post_6_mois ~ groupe*frq_moteur.Post_centre, data = data6mois, type = 2)
+```
+
+### ANCOVA frq_moteur
+```{r}
+ancova_6mois_mot <- afex::aov_ez(data = data6mois, dv = 'frq_moteur.Post_6_mois', between = 'groupe', id = 'id', covariate = 'frq_moteur.Post_centre', factorize = F)
+ancova_6mois_mot
+
+# --> NON
+
+# Graphique
+ggscatter(data6mois, x = "frq_moteur.Post", y = "frq_moteur.Post_6_mois",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
+
+
+## frq phonique
+### POSTULATS
+```{r}
+# Centrer covariable
+data6mois$frq_phonique.Post_centre <- data6mois$frq_phonique.Post - mean(data6mois$frq_phonique.Post)
+# Visualisation
+ggplot(data6mois, 
+       aes(x=frq_phonique.Post,
+           y=frq_phonique.Post_6_mois,
+           colour=groupe))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  scale_fill_hue(l=30)+scale_colour_hue(l=30)+
+  theme_classic() +
+  labs(x = "frq_phonique pré", y = "frq_phonique Post_6_mois")
+#------------------------------------------------------------------
+# Normalité & homogénéité (partie ANOVA) --> **********NON**********
+jmv::descriptives(data6mois, vars= vars(frq_phonique.Post_6_mois), skew = T, kurt = T, variance = TRUE, splitBy = groupe)
+#------------------------------------------------------------------
+# Linéarité par groupe
+    # GTS- --> *************NON************
+GTS_moins <- subset(data6mois, groupe == "GTS-")
+ggplot(GTS_moins,
+       aes(x=frq_phonique.Post, y=frq_phonique.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS-", 
+       x = "frq_phonique total Post", y = "frq_phonique total Post_6_mois")
+    # GTS+ --> *************NON*************
+GTS_plus <- subset(data6mois, groupe == "GTS+")
+ggplot(GTS_plus,
+       aes(x=frq_phonique.Post, y=frq_phonique.Post_6_mois))+
+  geom_point()+
+  theme_classic() +
+  labs(title = "GTS+", 
+       x = "frq_phonique total Post", y = "frq_phonique total Post_6_mois")
+#------------------------------------------------------------------
+# Normalité de la distribution d’échantillonnage des résiduels, par groupe --> OK
+      # GTS- ------------> OK
+reg_GTS_moins <- lm(frq_phonique.Post_6_mois~frq_phonique.Post, GTS_moins, na.action=na.exclude)
+GTS_moins$res <- residuals(reg_GTS_moins)
+
+ggplot(GTS_moins, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS-", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_moins, vars = res, skew = T, kurt = T)
+
+      # GTS+ ------------> *************NON*************
+reg_GTS_plus <- lm(frq_phonique.Post_6_mois~frq_phonique.Post, GTS_plus, na.action=na.exclude)
+GTS_plus$res <- residuals(reg_GTS_plus)
+
+ggplot(GTS_plus, aes(x = res)) + geom_histogram() +
+  labs(title="Histogramme des résiduels GTS+", 
+       x="Résiduels", y = "Fréquence")
+
+jmv::descriptives(GTS_plus, vars = res, skew = T, kurt = T)
+#------------------------------------------------------------------
+# Homogénéité de la variance des résiduels, par groupe
+    #GTS- --> OK
+ggplot(GTS_moins, aes(x = frq_phonique.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS-", 
+       x = "frq_phonique.Post centré", y = "Résiduels")
+
+    #GTS+ --> *************NON*************
+ggplot(GTS_plus, aes(x = frq_phonique.Post_centre, y = res)) + 
+  geom_point() +
+  theme_classic() +
+  labs(title = "Résiduels GTS+", 
+       x = "frq_phonique.Post centré", y = "Résiduels")
+#------------------------------------------------------------------
+# Homogénéité des régressions --> OK
+
+rstatix::anova_test(frq_phonique.Post_6_mois ~ groupe*frq_phonique.Post_centre, data = data6mois, type = 2)
+```
+
+### ANCOVA frq_phonique
+```{r}
+# Non respect postulats donc modèle robuste
+WRS2::ancova(frq_phonique.Post_6_mois ~ frq_phonique.Post + groupe, data = data6mois)
+
+# Graphique
+ggscatter(data6mois, x = "frq_phonique.Post", y = "frq_phonique.Post_6_mois",
+  color = "groupe", add = "reg.line")+
+  stat_regline_equation(aes(label =  paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = groupe))
+```
+
+
+
+
+
+
+# GRAPHIQUE
 ```{r}
 
-tab_all_ygtss <- subset(data_SGT, !is.na(YGTSS.Pre) & !is.na(YGTSS.Post) & !is.na(YGTSS.Post_6_mois))
-tab_all_ygtss
-
-tab_ygtss_time <- data.frame(id = tab_all_ygtss$id, groupe = tab_all_ygtss$groupe, Pre = tab_all_ygtss$YGTSS.Pre, Post = tab_all_ygtss$YGTSS.Post, Post_6_mois = tab_all_ygtss$YGTSS.Post_6_mois) %>% 
+# tab 3 scores YGTSS avec colonne de temps
+tab_ygtss_time <- data.frame(id = data6mois$id, groupe = data6mois$groupe, Pre = data6mois$YGTSS.Pre, Post = data6mois$YGTSS.Post, Post_6_mois = data6mois$YGTSS.Post_6_mois) %>% 
                             gather(key = "time", value = "YGTSS", Pre, Post, Post_6_mois) %>% convert_as_factor(id, time)
 tab_ygtss_time
-
-frq_moteur_time <- data.frame(id = tab_all_ygtss$id, groupe = tab_all_ygtss$groupe, Pre = tab_all_ygtss$frq_moteur.Pre, Post = tab_all_ygtss$frq_moteur.Post, Post_6_mois = tab_all_ygtss$frq_moteur.Post_6_mois) %>% 
+frq_moteur_time <- data.frame(id = data6mois$id, groupe = data6mois$groupe, Pre = data6mois$frq_moteur.Pre, Post = data6mois$frq_moteur.Post, Post_6_mois = data6mois$frq_moteur.Post_6_mois) %>% 
                               gather(key = "time", value = "frq_moteur", Pre, Post, Post_6_mois) %>% convert_as_factor(id, time)
-
-
-frq_phonique_time <- data.frame(id = tab_all_ygtss$id, groupe = tab_all_ygtss$groupe, Pre = tab_all_ygtss$frq_phonique.Pre, Post = tab_all_ygtss$frq_phonique.Post, Post_6_mois = tab_all_ygtss$frq_phonique.Post_6_mois) %>% 
+frq_phonique_time <- data.frame(id = data6mois$id, groupe = data6mois$groupe, Pre = data6mois$frq_phonique.Pre, Post = data6mois$frq_phonique.Post, Post_6_mois = data6mois$frq_phonique.Post_6_mois) %>% 
                               gather(key = "time", value = "frq_phonique", Pre, Post, Post_6_mois) %>% convert_as_factor(id, time)
 
 
@@ -483,268 +934,23 @@ tab_ygtss_time$frq_moteur <- frq_moteur_time$frq_moteur
 tab_ygtss_time$frq_phonique <- frq_phonique_time$frq_phonique
 
 tab_ygtss_time
-```
 
-
-## Postulats
-
-### Normalité & Homogénéité de la variance
-
-Normalité : 
-  Examiner la normalité du score moyen pour chaque niveau de la VI inter-sujet (i.e., pour chaque groupe)
-  On peut assumer que la normalité est non- problématique pour la VI intra-sujet (N égaux)
-  Mais on doit quand même la vérifier pour l’homogénéité de la variance
-
-
-Homogénéité de la variance :
-  Pour les facteurs “between” (inter-sujet) --> groupe
-
-
-https://www.datanovia.com/en/lessons/repeated-measures-anova-in-r/
-```{r}
-tab_ygtss_time %>% group_by(groupe, time) %>% get_summary_stats(YGTSS, type = "mean_sd")
-
-
-
-tab_ygtss_time$time <- as.character(tab_ygtss_time$time)
-#Then turn it back into a factor with the levels in the correct order
-tab_ygtss_time$time <- factor(tab_ygtss_time$time, levels=unique(tab_ygtss_time$time))
-
-library('ggpubr')
-
-tab_ygtss_time
-
-
-ggboxplot(
-  tab_ygtss_time, x = "time", y = "YGTSS", order = c("Pre", "Post", "Post_6_mois"),
-  color = "groupe", palette = c("#00AFBB", "#FC4E07"))
-
-ggboxplot(
-  tab_ygtss_time, x = "time", y = "frq_moteur", order = c("Pre", "Post", "Post_6_mois"),
-  color = "groupe", palette = c("#00AFBB", "#FC4E07"))
-
-ggboxplot(
-  tab_ygtss_time, x = "time", y = "frq_phonique", order = c("Pre", "Post", "Post_6_mois"),
-  color = "groupe", palette = c("#00AFBB", "#FC4E07"))
 
 
 sum <- tab_ygtss_time %>%
   group_by(groupe, time) %>%
   summarise(
     mean = mean(YGTSS),
-    sd = sd(YGTSS),
-    se = se(YGTSS))
+    sd = sd(YGTSS))
+
 ggplot(sum, aes(x = time, y = mean, color=groupe, group=groupe)) +
   geom_point() +
   geom_line() +
   geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(0.2))+
   labs(x = "Temps de mesure", y = "Sévérité des tics")+
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("Sévérité des tics en fonction du temps et du groupe.png")
 
-sum_moteur <- tab_ygtss_time %>%
-  group_by(groupe, time) %>%
-  summarise(
-    mean = mean(frq_moteur),
-    sd = sd(frq_moteur))
-ggplot(sum_moteur, aes(x = time, y = mean, color=groupe, group=groupe)) +
-  geom_point() +
-  geom_line() +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(0.2))+
-  labs(x = "Temps de mesure", y = "Fréquence des tics moteurs")+
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("Fréquence des tics moteurs en fonction du temps et du groupe.png")
 
-sum_phonique <- tab_ygtss_time %>%
-  group_by(groupe, time) %>%
-  summarise(
-    mean = mean(frq_phonique),
-    sd = sd(frq_phonique))
-ggplot(sum_phonique, aes(x = time, y = mean, color=groupe, group=groupe)) +
-  geom_point() +
-  geom_line() +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(0.2))+
-  labs(x = "Temps de mesure", y = "Fréquence des tics phoniques")+
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("Fréquence des tics phoniques en fonction du temps et du groupe.png")
+#ggsave("Sévérité des tics en fonction du temps et du groupe.png")
 ```
 
-## Postulats
-
-### Normalité & homogénéité--> OK
-```{r}
-means <- tab_ygtss_time %>% group_by(id,groupe) %>% summarise(dv=mean(YGTSS))
-
-jmv::descriptives(means, vars= dv,splitBy=groupe,skew=T,kurt=T, variance = TRUE)
-```
-
-### Sphéricité
-```{r}
-anv <- afex::aov_ez(data = tab_ygtss_time, id="id", dv="YGTSS", between= "groupe", within="time")
-
-summary(anv$Anova) # EHF > 0.75 --> correction HF
-```
-
-## ANOVA OFFICIELLE (avec correction HF)
-```{r}
-afex::nice(anv,correction="HF")
-effectsize::epsilon_squared(anv, partial=T)
-
-# Post hocs
-ph <- emmeans(anv,~ c(groupe, time))
-pairs(ph,adjust="bonf")
-
-tab_ygtss_time %>%
-  pairwise_t_test(
-    YGTSS ~ time, paired = TRUE,
-    p.adjust.method = "bonferroni"
-    )
-
-Rmisc::summarySE(tab_ygtss_time, measurevar = "YGTSS", groupvars = "time", na.rm = TRUE)
-```
-
-####################################################
-## Postulats
-
-### Normalité & homogénéité--> OK
-```{r}
-means <- tab_ygtss_time %>% group_by(id,groupe) %>% summarise(dv=mean(frq_moteur))
-
-jmv::descriptives(means, vars= dv,splitBy=groupe,skew=T,kurt=T, variance = TRUE)
-```
-
-### Sphéricité
-```{r}
-anv <- afex::aov_ez(data = tab_ygtss_time, id="id", dv="frq_moteur", between= "groupe", within="time")
-
-summary(anv$Anova) # EHF > 0.75 --> correction HF
-```
-
-## ANOVA OFFICIELLE (avec correction HF)
-```{r}
-afex::nice(anv,correction="HF")
-effectsize::epsilon_squared(anv, partial=T)
-
-# Post hocs
-ph <- emmeans(anv,~ c(groupe, time))
-pairs(ph,adjust="bonf")
-
-tab_ygtss_time %>%
-  pairwise_t_test(
-    frq_moteur ~ time, paired = TRUE, 
-    p.adjust.method = "bonferroni"
-  )
-
-Rmisc::summarySE(tab_ygtss_time, measurevar = "frq_moteur", groupvars = "time", na.rm = TRUE)
-```
-
-####################################################
-## Postulats
-
-### Normalité & homogénéité--> OK
-```{r}
-means <- tab_ygtss_time %>% group_by(id,groupe) %>% summarise(dv=mean(frq_phonique))
-
-jmv::descriptives(means, vars= dv,splitBy=groupe,skew=T,kurt=T, variance = TRUE)
-```
-
-### Sphéricité
-```{r}
-anv <- afex::aov_ez(data = tab_ygtss_time, id="id", dv="frq_phonique", between= "groupe", within="time")
-
-summary(anv$Anova) # EHF > 0.75 --> correction HF
-```
-
-## ANOVA OFFICIELLE (avec correction HF)
-```{r}
-afex::nice(anv,correction="HF")
-effectsize::epsilon_squared(anv, partial=T)
-
-# Post hocs
-ph <- emmeans(anv,~ c(groupe, time))
-pairs(ph,adjust="bonf")
-
-tab_ygtss_time %>%
-  pairwise_t_test(
-    frq_phonique ~ time, paired = TRUE, 
-    p.adjust.method = "bonferroni"
-  )
-
-Rmisc::summarySE(tab_ygtss_time, measurevar = "frq_phonique", groupvars = "time", na.rm = TRUE)
-```
-
-
-```{r}
-tab_prepost6mois <- subset(stats, !is.na(YGTSS.Post) & !is.na(YGTSS.Post_6_mois))
-tab_prepost6mois
-
-frq(tab_prepost6mois$groupe)
-
-Rmisc::summarySE(tab_prepost6mois, measurevar = "YGTSS.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "YGTSS.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "YGTSS.Post_6_mois", groupvars = "groupe", na.rm = TRUE)
-
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_moteur.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_moteur.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_moteur.Post_6_mois", groupvars = "groupe", na.rm = TRUE)
-
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_phonique.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_phonique.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost6mois, measurevar = "frq_phonique.Post_6_mois", groupvars = "groupe", na.rm = TRUE)
-```
-
-###################################################################
-
-
-```{r}
-stats$YGTSS.delta <- stats$YGTSS.Post - stats$YGTSS.Pre
-stats$YGTSS.delta_moteur <- stats$frq_moteur.Post - stats$frq_moteur.Pre
-stats$YGTSS.delta_phonique <- stats$frq_phonique.Post - stats$frq_phonique.Pre
-
-tab_prepost <- subset(stats, !is.na(YGTSS.Post))
-
-frq(tab_prepost$groupe)
-
-# Scores Z --> OK
-z_prepost = data.frame(id = tab_prepost$id, groupe = tab_prepost$groupe)
-z_prepost$YGTSS.delta = scale(tab_prepost$YGTSS.delta)
-z_prepost$YGTSS.delta_moteur = scale(tab_prepost$YGTSS.delta_moteur)
-z_prepost$YGTSS.delta_phonique = scale(tab_prepost$YGTSS.delta_phonique)
-
-
-subset(z_prepost, abs(YGTSS.delta)>3.29)
-subset(z_prepost, abs(YGTSS.delta_moteur)>3.29)
-subset(z_prepost, abs(YGTSS.delta_phonique)>3.29)
-
-# Normalité & homogénéité --> OK
-jmv::descriptives(tab_prepost, vars= c(YGTSS.delta, YGTSS.delta_moteur, YGTSS.delta_phonique), splitBy=groupe, skew=T, kurt=T, variance = TRUE)
-
-
-
-
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta", between= "groupe")
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta_moteur",  between= "groupe")
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta_phonique",  between= "groupe")
-
-
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta",  covariate = "BDI", between= "groupe")
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta_moteur",  covariate = "BDI",  between= "groupe")
-afex::aov_ez(data = stats, id="id", dv="YGTSS.delta_phonique",  covariate = "BDI",  between= "groupe")
-
-
-Rmisc::summarySE(tab_prepost, measurevar = "YGTSS.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "YGTSS.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "YGTSS.delta", groupvars = "groupe", na.rm = TRUE)
-
-Rmisc::summarySE(tab_prepost, measurevar = "frq_moteur.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "frq_moteur.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "YGTSS.delta_moteur", groupvars = "groupe", na.rm = TRUE)
-
-Rmisc::summarySE(tab_prepost, measurevar = "frq_phonique.Pre", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "frq_phonique.Post", groupvars = "groupe", na.rm = TRUE)
-Rmisc::summarySE(tab_prepost, measurevar = "YGTSS.delta_phonique", groupvars = "groupe", na.rm = TRUE)
-```
-
-
-
- 
